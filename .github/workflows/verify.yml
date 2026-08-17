@@ -57,6 +57,10 @@ jobs:
           run-install: |
             - args: ["--frozen-lockfile"]
       - name: Install the packed tarball and lint with it
+        # zizmor: ignore[adhoc-packages]
+        # The lockfile-less install is the assertion, not an oversight: the
+        # tarball is the local build output, and a consumer resolving it from a
+        # lockfile would prove the lockfile rather than the artifact.
         run: |
           vp pack
           tarball="$(pnpm pack --pack-destination "$RUNNER_TEMP" | tail -1)"
