@@ -233,6 +233,8 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
   const require = createRequire(path.join(runDir, "resolver.js"));
   assert.ok(require.resolve("@anthropic-ai/claude-agent-sdk"), "agent SDK must resolve from the scratch dir");
   assert.ok(fs.lstatSync(path.join(runDir, "node_modules")).isSymbolicLink());
+  // codex-sdk exports no main entry, so its presence is checked by path.
+  assert.ok(fs.existsSync(path.join(runDir, "node_modules", "@openai", "codex-sdk", "package.json")));
 
   // The link must not leak into the graded workdir or the manifest.
   assert.equal(fs.existsSync(path.join(runDir, "workdir", "node_modules")), false);
@@ -243,11 +245,14 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("sdkNodeModulesDir: points at a directory that really holds the SDK", () => {
+test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () => {
   const dir = sdkNodeModulesDir();
   assert.ok(dir !== undefined);
   assert.equal(path.basename(dir), "node_modules");
-  assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk")));
+  // Both providers must be reachable through the one link, whatever their
+  // export maps say — codex-sdk has no resolvable main entry.
+  assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk", "package.json")));
+  assert.ok(fs.existsSync(path.join(dir, "@openai", "codex-sdk", "package.json")));
 });
 
 function runCli(args: string[], cwd?: string): { rc: number; stdout: string; stderr: string } {

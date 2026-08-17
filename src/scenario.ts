@@ -282,18 +282,16 @@ const SDK_PACKAGES = ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"];
 // node_modules above it. Locate the directory that actually holds skillcheck's
 // own dependencies — wherever the install landed, hoisted or nested — rather
 // than assuming a layout.
+// Walks the resolution chain rather than resolving an entry point: @openai/
+// codex-sdk publishes no main "exports", so require.resolve(pkg) throws for it
+// even when the package is installed and importable by subpath. Looking for the
+// package directory in the candidate node_modules dirs is immune to whatever
+// export map a provider ships.
 export function sdkNodeModulesDir(): string | undefined {
   const require = createRequire(import.meta.url);
   for (const pkg of SDK_PACKAGES) {
-    let entry: string;
-    try {
-      entry = require.resolve(pkg);
-    } catch {
-      continue;
-    }
-    for (let dir = path.dirname(entry); ; dir = path.dirname(dir)) {
-      if (path.basename(dir) === "node_modules") return dir;
-      if (path.dirname(dir) === dir) break;
+    for (const dir of require.resolve.paths(pkg) ?? []) {
+      if (fs.existsSync(path.join(dir, pkg, "package.json"))) return dir;
     }
   }
   return undefined;

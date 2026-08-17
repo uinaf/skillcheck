@@ -8,7 +8,7 @@ model auth. Only the first belongs in a consumer repo.
 Pin the tag. Git installs need no registry auth, so this works in private repos.
 
 ```sh
-npm i -D github:uinaf/skillcheck#v0.1.2
+npm i -D github:uinaf/skillcheck#v0.1.3
 ```
 
 npm 12 defaults `allow-git` to `none` and will refuse the spec outright. Add one

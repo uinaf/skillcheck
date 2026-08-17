@@ -13,7 +13,7 @@ and how a scenario is scored.
 Tag-pinned git installs. No registry auth, so private repos work the same way.
 
 ```sh
-npm i -D github:uinaf/skillcheck#v0.1.2
+npm i -D github:uinaf/skillcheck#v0.1.3
 ```
 
 npm 12 refuses git dependencies by default. Consumers on it need one line in
