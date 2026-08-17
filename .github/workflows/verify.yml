@@ -1,0 +1,77 @@
+name: Verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  # release.yml calls this for pushes to main. One definition serves every
+  # trigger; a second copy is how the gate drifts from the gate that guards
+  # the branch it ships from.
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # `github.workflow` and `github.ref` resolve to the caller's, so a called run
+  # groups under its caller and never collides with a PR run.
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  # A superseded pull request run is waste. A superseded push to main is not:
+  # it is the run whose result the release job needs.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  verify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          node-version-file: ".node-version"
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+      - run: vp run verify
+
+  # `vp run verify` proves the source. Only this proves the artifact a consumer
+  # actually receives: the tarball's `bin` resolving, its `dist/` being complete,
+  # and `skillcheck lint` running with no dev dependencies and no model auth —
+  # which is exactly how a consumer repo runs the lint half.
+  consumer:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # setup-vp puts `vp` on PATH but not `pnpm`, and this job is the one that
+      # needs the package manager itself to build the tarball.
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with:
+          standalone: true
+      - uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          node-version-file: ".node-version"
+          cache: true
+          run-install: |
+            - args: ["--frozen-lockfile"]
+      - name: Install the packed tarball and lint with it
+        # zizmor: ignore[adhoc-packages]
+        # The lockfile-less install is the assertion, not an oversight: the
+        # tarball is the local build output, and a consumer resolving it from a
+        # lockfile would prove the lockfile rather than the artifact.
+        run: |
+          vp pack
+          tarball="$(pnpm pack --pack-destination "$RUNNER_TEMP" | tail -1)"
+          consumer="$RUNNER_TEMP/consumer"
+          mkdir -p "$consumer"
+          cd "$consumer"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$tarball"
+          ./node_modules/.bin/skillcheck lint "$GITHUB_WORKSPACE/test/fixtures/clean"

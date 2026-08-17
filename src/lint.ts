@@ -51,20 +51,27 @@ function lintSkill(dir: string, root: string, errors: string[]): void {
       errors.push(`${label}: duplicate frontmatter key: ${key}`);
       continue;
     }
-    const value = raw.replace(/^"(.*)"$/s, "$1").replace(/^'(.*)'$/s, "$1").trim();
+    const value = raw
+      .replace(/^"(.*)"$/s, "$1")
+      .replace(/^'(.*)'$/s, "$1")
+      .trim();
     fields.set(key, { raw: raw.trim(), value });
   }
 
   const name = fields.get("name")?.value ?? "";
   if (name !== path.basename(dir)) {
-    errors.push(`${label}: frontmatter name ${JSON.stringify(name)} != directory ${path.basename(dir)}`);
+    errors.push(
+      `${label}: frontmatter name ${JSON.stringify(name)} != directory ${path.basename(dir)}`,
+    );
   }
   if (!fields.get("description")?.value) {
     errors.push(`${label}: description is required and must be non-empty`);
   }
   const dmi = fields.get("disable-model-invocation");
   if (dmi !== undefined && dmi.raw !== "true") {
-    errors.push(`${label}: disable-model-invocation must be the literal boolean true, got ${JSON.stringify(dmi.raw)}`);
+    errors.push(
+      `${label}: disable-model-invocation must be the literal boolean true, got ${JSON.stringify(dmi.raw)}`,
+    );
   }
 
   // Relative links in the body must resolve; external and anchor links pass.
@@ -88,7 +95,9 @@ function lintSkill(dir: string, root: string, errors: string[]): void {
 // Pure-ish reducer over a root: reads the tree, returns findings, prints
 // nothing. The layout contract is frozen at <root>/skills/<skill>/.
 export function lintSkills(root: string): LintReport {
-  const roots = ["skills", ...fs.globSync("cli/*/skills", { cwd: root })].map((r) => path.join(root, r));
+  const roots = ["skills", ...fs.globSync("cli/*/skills", { cwd: root })].map((r) =>
+    path.join(root, r),
+  );
   const errors: string[] = [];
   let count = 0;
   for (const dir of roots) {

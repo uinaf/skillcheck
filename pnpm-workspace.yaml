@@ -1,0 +1,25 @@
+# pnpm refuses to install until every dependency build script is answered, so
+# each one is a decision recorded here rather than a blanket approval. All six
+# come from promptfoo, and only the eval half ever reaches promptfoo — the lint
+# half has no dependencies at all.
+allowBuilds:
+  # promptfoo transpiles and bundles config and provider modules at runtime.
+  esbuild: true
+  "@swc/core": true
+  protobufjs: true
+  # Browser automation, local ONNX embedding models, and image processing.
+  # Scenarios grade text files with a remote judge and drive no browser, so
+  # these are hundreds of megabytes of install for a path that is never taken.
+  "@playwright/browser-chromium": false
+  onnxruntime-node: false
+  sharp: false
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.9
+  vite-plus: 0.2.9
+overrides:
+  vite: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"
