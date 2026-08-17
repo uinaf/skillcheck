@@ -1,0 +1,4 @@
+{
+  "name": "skillcheck-fixtures",
+  "description": "Dot-directories under skills/ are plugin metadata, not skill packages. The lint must skip this one."
+}
