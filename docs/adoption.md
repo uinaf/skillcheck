@@ -74,7 +74,7 @@ before the package was published, consumers installed it from a git tag:
 npm i -D github:uinaf/skillcheck#v0.1.3
 ```
 
-those tags are frozen and still work — they carry a committed `dist/`, and npm
+those tags are frozen and still work: they carry a committed `dist/`, and npm
 12 consumers needed `allow-git=root` in `.npmrc` to accept the spec at all. the
 registry install needs none of that. tags from `v0.1.4` on are npm releases and
 carry no `dist/`, so a git spec pointing at one will not run.

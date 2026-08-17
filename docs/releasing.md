@@ -12,7 +12,7 @@ secrets ─┘
 
 `verify` and `secrets` are the shared gate, called from `verify.yml` and
 `secrets.yml`, so one definition serves pull requests, the merge queue, and this
-push. keep it that way — a second copy of the gate on a push-to-`main` workflow
+push. keep it that way: a second copy of the gate on a push-to-`main` workflow
 races this one over the same commit.
 
 the file name `release.yml` is load-bearing. see below.
@@ -39,7 +39,7 @@ the same way.
 deleting the `release` environment deletes both rows above with it, and there is
 no repo-level fallback: `create-github-app-token` then runs with empty inputs
 and the job fails at that step. the private key cannot be read back from
-GitHub — recreating it means generating a new one in the App settings.
+GitHub; recreating it means generating a new one in the App settings.
 
 ## version history
 

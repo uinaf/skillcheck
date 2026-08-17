@@ -1,6 +1,6 @@
 # usage
 
-every subcommand resolves one root — `--root <dir>`, or the current directory.
+every subcommand resolves one root, `--root <dir>` or the current directory.
 `lint` also takes the root as a positional, because that is the shape CI reaches
 for first.
 
@@ -17,7 +17,7 @@ checks each `<root>/skills/<skill>/`:
 - keys are `name`, `description`, `disable-model-invocation` and nothing else,
   each at most once
 - `name` equals the directory name; `description` is non-empty
-- `disable-model-invocation`, when present, is the bare YAML boolean `true` —
+- `disable-model-invocation`, when present, is the bare YAML boolean `true`.
   a quoted `"true"` is an error
 - relative links in the body resolve on disk
 
@@ -40,9 +40,9 @@ installs the skill under test into that workdir, drives the agent, and grades
 the files it wrote. exit 0 pass, 1 graded fail, 2 error (promptfoo produced no
 usable result).
 
-a test that errored was never graded, so it exits 2 and prints the provider's
-message. it is never reported as `FAIL score=0.0000` and it writes no provenance
-sidecar — only a real judged verdict can fail a run.
+a test that errored was never graded, so it exits 2, prints the provider's
+message, and writes no provenance sidecar. it is never reported as
+`FAIL score=0.0000`; only a real judged verdict can fail a run.
 
 defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
 `--max-turns 50`. on the codex harness, omitting `--agent` leaves the model to
@@ -61,6 +61,12 @@ discovered. exit 2 if anything errored, 1 if anything failed, else 0.
 
 `EVALS_CONCURRENCY` is passed to promptfoo as `-j` (default 4). it parallelizes
 within one scenario, not across them.
+
+one known failure mode: judge calls through a gateway can drop at the transport
+layer ([uinaf/agent-platform#28](https://github.com/uinaf/agent-platform/issues/28)).
+that surfaces as an ERROR with no usable result, not as a graded FAIL, and the
+mitigation is a rerun. `sweep` without `--all` resumes, so a rerun only picks up
+what is missing.
 
 ## summarize
 
@@ -102,9 +108,9 @@ becomes `mixed` and per-entry shas remain. a result with no sidecar reduces as
 
 ## state
 
-`<root>/.skillcheck/` holds `scratch/` and `results/` — both disposable, both
-safe to gitignore — and `scorecards/`, which is meant to be committed. nothing
-is ever written inside the installed package.
+`<root>/.skillcheck/` holds `scratch/` and `results/`, both disposable and safe
+to gitignore, and `scorecards/`, which is meant to be committed. nothing is ever
+written inside the installed package.
 
 ## auth
 

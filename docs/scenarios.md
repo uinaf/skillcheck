@@ -7,7 +7,7 @@ a scenario is two files in a frozen location:
 <root>/skills/<skill>/evals/<scenario>/criteria.json
 ```
 
-the path is the identity — `<skill>--<scenario>` names the run, the result file,
+the path is the identity: `<skill>--<scenario>` names the run, the result file,
 and the scorecard entry. on the codex harness the name gains a `--codex` suffix,
 so both harnesses can hold results side by side. a directory missing either file
 is not discovered.
@@ -25,8 +25,8 @@ Fix the failing check in the config below.
 ======= END FILE =======
 ```
 
-each block is replaced in the prompt with a pointer — "Input file `config.json`
-is available in your working directory." — and written to disk. destinations
+each block is replaced in the prompt with a pointer ("Input file `config.json`
+is available in your working directory.") and written to disk. destinations
 must stay under the workdir, must not collide, and must not target `.claude/` or
 `.agents/`, since a fixture that writes agent config would be configuring its
 own examiner.
@@ -54,7 +54,7 @@ assert-set with threshold 0.7. a separate `skill-used` assertion sits outside
 that aggregate, so a run that produces good output without ever loading the
 skill still fails. there is no test-level threshold: both must pass.
 
-write descriptions a judge can check against the deliverable — an observable
+write descriptions a judge can check against the deliverable: an observable
 property, not a feeling. weight the items that would make a reviewer reject the
 work.
 
@@ -72,8 +72,8 @@ small enough that the deliverable fits.
 ## hidden skills
 
 a skill with `disable-model-invocation: true` is explicit-invoke-only in
-production, which the agent SDK cannot simulate. so the eval copy — never the
-shipped one — has the flag stripped, and the task gains a leading
+production, which the agent SDK cannot simulate. so the eval copy, never the shipped one,
+has the flag stripped, and the task gains a leading
 `Use the <skill> skill for this task.` the eval then measures
 behavior-when-invoked rather than routing. the flag is only honored inside the
 frontmatter block; body text mentioning the key does not count.
@@ -81,6 +81,6 @@ frontmatter block; body text mentioning the key does not count.
 ## the workdir
 
 per run, under `<root>/.skillcheck/scratch/<name>/`, rebuilt from scratch each
-time. the skill under test is installed at `.claude/skills/<skill>/` — and also
-`.agents/skills/<skill>/` on the codex harness — with its `evals/` directory
+time. the skill under test is installed at `.claude/skills/<skill>/` (and also
+`.agents/skills/<skill>/` on the codex harness) with its `evals/` directory
 excluded, so criteria never leak into the agent's context.

@@ -34,7 +34,7 @@ See [usage](docs/usage.md) for how that auth is resolved.
 
 ## Branches and pull requests
 
-Conventional Commits — the subject line is what picks the next version. `feat`
+Conventional Commits; the subject line is what picks the next version. `feat`
 is a minor, `fix` is a patch, a `!` or `BREAKING CHANGE:` footer is a major.
 
 Fill in the pull request template. `Verification` should carry the commands you
