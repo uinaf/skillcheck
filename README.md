@@ -53,6 +53,7 @@ CLI it documents.
 | ------------------------------- | ------------------------------------- |
 | [usage](docs/usage.md)          | every subcommand, flag, and auth path |
 | [scenarios](docs/scenarios.md)  | writing an eval scenario              |
+| [authoring](docs/authoring.md)  | writing and auditing the skill itself |
 | [adoption](docs/adoption.md)    | wiring the lint into another repo     |
 | [releasing](docs/releasing.md)  | the npm pipeline                      |
 | [contributing](CONTRIBUTING.md) | local setup and the verify gate       |

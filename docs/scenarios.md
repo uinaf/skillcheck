@@ -84,3 +84,6 @@ per run, under `<root>/.skillcheck/scratch/<name>/`, rebuilt from scratch each
 time. the skill under test is installed at `.claude/skills/<skill>/` (and also
 `.agents/skills/<skill>/` on the codex harness) with its `evals/` directory
 excluded, so criteria never leak into the agent's context.
+
+scenario quality is behavioral proof; [authoring](authoring.md) covers the
+judgment layer lint and evals cannot grade.
