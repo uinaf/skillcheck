@@ -1,6 +1,6 @@
 {
   "name": "skillcheck",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lint and eval harness for agent skills",
   "license": "MIT",
   "author": "undefined is not a function LLC",
@@ -9,9 +9,10 @@
     "node": ">=24"
   },
   "bin": {
-    "skillcheck": "src/cli.ts"
+    "skillcheck": "dist/cli.js"
   },
   "files": [
+    "dist",
     "src",
     "docs",
     "README.md",
@@ -26,7 +27,8 @@
     "url": "https://github.com/uinaf/skillcheck/issues"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit --strict --module nodenext --target es2023 --types node --skipLibCheck --allowImportingTsExtensions src/cli.ts src/lint.ts src/scenario.ts src/transform.ts test/cli.test.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
     "test": "node --test test/cli.test.ts"
   },
   "dependencies": {

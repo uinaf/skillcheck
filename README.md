@@ -13,11 +13,20 @@ and how a scenario is scored.
 Tag-pinned git installs. No registry auth, so private repos work the same way.
 
 ```sh
-npm i -D github:uinaf/skillcheck#v0.1.0
+npm i -D github:uinaf/skillcheck#v0.1.1
 ```
 
-Node 24 or newer. The package ships TypeScript and node runs it directly under
-type stripping — there is no build step and no compiled artifact.
+npm 12 refuses git dependencies by default. Consumers on it need one line in
+`.npmrc`:
+
+```ini
+allow-git=root
+```
+
+That permits git specs the root project declares, and nothing transitively.
+
+Node 24 or newer. Source is TypeScript; the package ships the compiled `dist/`
+alongside it and installs run no scripts.
 
 ## Layout contract
 

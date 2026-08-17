@@ -8,8 +8,19 @@ model auth. Only the first belongs in a consumer repo.
 Pin the tag. Git installs need no registry auth, so this works in private repos.
 
 ```sh
-npm i -D github:uinaf/skillcheck#v0.1.0
+npm i -D github:uinaf/skillcheck#v0.1.1
 ```
+
+npm 12 defaults `allow-git` to `none` and will refuse the spec outright. Add one
+line to the consumer's `.npmrc` — `allow-git=root` permits git dependencies the
+root project declares, without opening the door transitively:
+
+```ini
+allow-git=root
+```
+
+Runners that install with `--ignore-scripts` are fine: the package ships its
+compiled `dist/` and has no install, prepare, or postinstall script.
 
 ```json
 { "scripts": { "skills:lint": "skillcheck lint" } }
@@ -33,8 +44,7 @@ jobs:
 ```
 
 The job needs no secrets and no network beyond the install. Node 24 is the
-floor: the package ships TypeScript and relies on node's type stripping, so
-there is nothing to build and nothing older to fall back to.
+floor.
 
 Run it through the script rather than a bare `npx skillcheck`, which would
 resolve against the public registry instead of the pinned install.
@@ -59,6 +69,14 @@ Commit `.skillcheck/scorecards/`. Gitignore the rest:
 A scorecard is only comparable against the tree it graded, which is why every
 result carries the root repo's HEAD and `summarize` refuses to mix revisions
 without `--allow-mixed`.
+
+## Why the package carries compiled output
+
+Node refuses to strip types from any file under `node_modules`, so an installed
+copy cannot run the TypeScript sources; and npm 12 blocks a dependency's
+`prepare` script by default, so building at install time is not dependable
+either. The package therefore commits `dist/`, and CI rebuilds it on every push
+and fails on any diff. Edit `src/`, never `dist/`.
 
 ## Upgrading
 

@@ -24,6 +24,24 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  build:
+    name: build is in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # dist/ is committed because node will not strip types under node_modules
+      # and npm 12 blocks a dependency's prepare script by default. Committed
+      # output only stays honest if CI rebuilds it and finds no diff.
+      - run: git diff --exit-code dist
+
   test:
     name: test
     runs-on: ubuntu-latest

@@ -177,6 +177,23 @@ test("lint: a root with no skills tree lints nothing and passes", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// Regression: npm installs the bin as a symlink into node_modules/.bin, which
+// used to defeat the entrypoint check and turn the whole CLI into a silent
+// exit-0 no-op. Both the source and the built copy must survive that.
+for (const entry of ["src/cli.ts", "dist/cli.js"]) {
+  test(`cli: invoked through a symlink, ${entry} still runs`, () => {
+    const target = path.join(here, "..", entry);
+    if (!fs.existsSync(target)) return; // dist is built by `npm run build`
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-bin-"));
+    const link = path.join(dir, "skillcheck");
+    fs.symlinkSync(target, link);
+    const r = spawnSync(process.execPath, [link, "lint", path.join(fixtures, "clean")], { encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /skill lint: 2 package\(s\) clean/);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+}
+
 test("cli: unknown subcommands and stray lint arguments exit 1", () => {
   assert.equal(runCli(["nope"]).rc, 1);
   assert.match(runCli(["nope"]).stderr, /usage: skillcheck <lint\|run\|sweep\|summarize>/);

@@ -13,12 +13,15 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { lintSkills } from "./lint.ts";
 import { generateRun, runNameFor, type Harness, type RunOptions } from "./scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(here, "..");
+// node refuses to strip types under node_modules, so an installed copy runs the
+// compiled dist. Follow this module's own extension to find its sibling.
+const selfExt = path.extname(fileURLToPath(import.meta.url));
 
 // Recorded in every result sidecar: a scorecard has to say which harness build
 // produced it, not just which skills tree it graded.
@@ -109,7 +112,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const dirs = stateDirs(root);
   const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
     scratchDir: dirs.scratch,
-    transformPath: path.join(here, "transform.ts"),
+    transformPath: path.join(here, `transform${selfExt}`),
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
@@ -308,8 +311,21 @@ function cmdLint(argv: string[]): void {
   console.log(`skill lint: ${count} package(s) clean`);
 }
 
-const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) {
+// npm links bins as symlinks — node_modules/.bin/skillcheck points at
+// ../skillcheck/dist/cli.js — so argv[1] and import.meta.url disagree on path
+// for every installed copy. Comparing them raw made the installed CLI a silent
+// no-op that still exited 0. Resolve both through realpath before deciding.
+function isMainModule(): boolean {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   const [cmd, ...rest] = process.argv.slice(2);
   try {
     if (cmd === "run") cmdRun(rest);
