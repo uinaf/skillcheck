@@ -31,7 +31,8 @@ export function toolVersion(): string {
 
 export function parseMaxTurns(raw: string): number {
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) throw new Error(`--max-turns must be a positive integer, got ${JSON.stringify(raw)}`);
+  if (!Number.isInteger(n) || n <= 0)
+    throw new Error(`--max-turns must be a positive integer, got ${JSON.stringify(raw)}`);
   return n;
 }
 
@@ -41,7 +42,10 @@ function fail(msg: string): never {
 }
 
 // Throws on bad input; the CLI entrypoint catches and exits 1.
-export function parseArgs(argv: string[]): { positional: string[]; flags: Map<string, string | true> } {
+export function parseArgs(argv: string[]): {
+  positional: string[];
+  flags: Map<string, string | true>;
+} {
   const positional: string[] = [];
   const flags = new Map<string, string | true>();
   const takesValue = new Set(["--root", "--agent", "--judge", "--harness", "--max-turns"]);
@@ -81,14 +85,17 @@ export function stateDirs(root: string): { results: string; scratch: string; sco
 
 function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
-  if (harness !== "claude" && harness !== "codex") fail(`--harness must be claude or codex, got ${harness}`);
+  if (harness !== "claude" && harness !== "codex")
+    fail(`--harness must be claude or codex, got ${harness}`);
   const agent = flags.get("--agent") as string | undefined;
   return {
     harness: harness as Harness,
     // claude defaults in scenario.ts; codex undefined = current Codex CLI default
     agentModel: agent,
     judgeModel: (flags.get("--judge") as string | undefined) ?? "claude-opus-5",
-    maxTurns: flags.has("--max-turns") ? parseMaxTurns(flags.get("--max-turns") as string) : undefined,
+    maxTurns: flags.has("--max-turns")
+      ? parseMaxTurns(flags.get("--max-turns") as string)
+      : undefined,
   };
 }
 
@@ -113,16 +120,28 @@ export interface Verdict {
 // so an errored result stays an ERROR and exits 2 per the documented contract.
 export function classifyResult(raw: unknown): Verdict {
   const root = raw as
-    | { results?: { results?: unknown[]; stats?: { successes?: number; failures?: number; errors?: number } } }
+    | {
+        results?: {
+          results?: unknown[];
+          stats?: { successes?: number; failures?: number; errors?: number };
+        };
+      }
     | undefined;
-  const res = root?.results?.results?.[0] as { error?: unknown; score?: unknown; success?: unknown } | undefined;
+  const res = root?.results?.results?.[0] as
+    | { error?: unknown; score?: unknown; success?: unknown }
+    | undefined;
   if (res === undefined) return { error: "promptfoo output carried no result" };
 
   const message = typeof res.error === "string" ? res.error.trim() : "";
   if (message !== "") return { error: message };
 
   const stats = root?.results?.stats;
-  if (stats !== undefined && (stats.errors ?? 0) > 0 && (stats.successes ?? 0) === 0 && (stats.failures ?? 0) === 0) {
+  if (
+    stats !== undefined &&
+    (stats.errors ?? 0) > 0 &&
+    (stats.successes ?? 0) === 0 &&
+    (stats.failures ?? 0) === 0
+  ) {
     return { error: "promptfoo reported an errored test with nothing graded" };
   }
   if (typeof res.score !== "number" || typeof res.success !== "boolean") {
@@ -153,11 +172,26 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const sha = gitHead(root);
   const r = spawnSync(
     "npx",
-    ["promptfoo", "eval", "--no-cache", "--no-progress-bar", "-j", process.env.EVALS_CONCURRENCY ?? "4", "-c", configPath, "-o", resultPath],
+    [
+      "promptfoo",
+      "eval",
+      "--no-cache",
+      "--no-progress-bar",
+      "-j",
+      process.env.EVALS_CONCURRENCY ?? "4",
+      "-c",
+      configPath,
+      "-o",
+      resultPath,
+    ],
     // Failing assertions exit 0 (graded FAIL is read from the result file);
     // any nonzero rc is therefore a real error. cwd is the installed package so
     // `npx promptfoo` resolves this package's own dependency.
-    { cwd: packageDir, stdio: "inherit", env: { ...process.env, PROMPTFOO_FAILED_TEST_EXIT_CODE: "0" } },
+    {
+      cwd: packageDir,
+      stdio: "inherit",
+      env: { ...process.env, PROMPTFOO_FAILED_TEST_EXIT_CODE: "0" },
+    },
   );
   const rc = r.status ?? 1; // null status (signal) counts as failure
   const outcome: RunOutcome = { name, rc, resultPath };
@@ -178,7 +212,16 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   if (verdict.score !== undefined) {
     fs.writeFileSync(
       metaPath(resultPath),
-      JSON.stringify({ skills_tree_sha: sha, harness: opts.harness, ran_at: new Date().toISOString(), tool_version: toolVersion() }, null, 2) + "\n",
+      JSON.stringify(
+        {
+          skills_tree_sha: sha,
+          harness: opts.harness,
+          ran_at: new Date().toISOString(),
+          tool_version: toolVersion(),
+        },
+        null,
+        2,
+      ) + "\n",
     );
   }
   return outcome;
@@ -200,7 +243,11 @@ function discoverScenarios(root: string): string[] {
       if (!skill.isDirectory() || !fs.existsSync(evalsDir)) continue;
       for (const sc of fs.readdirSync(evalsDir, { withFileTypes: true })) {
         const scenarioDir = path.join(evalsDir, sc.name);
-        if (sc.isDirectory() && fs.existsSync(path.join(scenarioDir, "task.md")) && fs.existsSync(path.join(scenarioDir, "criteria.json"))) {
+        if (
+          sc.isDirectory() &&
+          fs.existsSync(path.join(scenarioDir, "task.md")) &&
+          fs.existsSync(path.join(scenarioDir, "criteria.json"))
+        ) {
           found.push(scenarioDir);
         }
       }
@@ -211,13 +258,18 @@ function discoverScenarios(root: string): string[] {
 
 function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length !== 1) fail("usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--harness claude|codex]");
+  if (positional.length !== 1)
+    fail(
+      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--harness claude|codex]",
+    );
   const o = runScenario(positional[0], runOptions(flags), resolveRoot(flags));
   if (o.score === undefined) {
     console.error(`ERROR ${o.name}: ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
     process.exit(2);
   }
-  console.log(`${o.pass ? "PASS" : "FAIL"} ${o.name} score=${o.score.toFixed(4)} (results: ${o.resultPath})`);
+  console.log(
+    `${o.pass ? "PASS" : "FAIL"} ${o.name} score=${o.score.toFixed(4)} (results: ${o.resultPath})`,
+  );
   process.exit(o.pass ? 0 : 1);
 }
 
@@ -228,7 +280,10 @@ function cmdSweep(argv: string[]): void {
   const opts = runOptions(flags);
   const all = flags.get("--all") === true;
   const resultsDir = stateDirs(root).results;
-  let passed = 0, failed = 0, errored = 0, skipped = 0;
+  let passed = 0,
+    failed = 0,
+    errored = 0,
+    skipped = 0;
   for (const dir of discoverScenarios(root)) {
     const name = runNameFor(dir, opts.harness);
     const resultPath = path.join(resultsDir, `${name}.json`);
@@ -249,7 +304,9 @@ function cmdSweep(argv: string[]): void {
       console.log(`FAIL  ${o.name} score=${o.score.toFixed(4)}`);
     }
   }
-  console.log(`\nsweep: ${passed} passed, ${failed} failed, ${errored} errored, ${skipped} skipped`);
+  console.log(
+    `\nsweep: ${passed} passed, ${failed} failed, ${errored} errored, ${skipped} skipped`,
+  );
   process.exit(errored > 0 ? 2 : failed > 0 ? 1 : 0);
 }
 
@@ -269,11 +326,17 @@ export interface ScorecardEntry {
 // Pure reducer over a results directory. Skips files that are not promptfoo
 // results (warns to stderr, reported in `skipped`); throws on mixed
 // skills-tree revisions unless allowMixed.
-export function reduceResults(dir: string, allowMixed: boolean): { treeSha: string; entries: ScorecardEntry[]; skipped: string[] } {
+export function reduceResults(
+  dir: string,
+  allowMixed: boolean,
+): { treeSha: string; entries: ScorecardEntry[]; skipped: string[] } {
   const entries: ScorecardEntry[] = [];
   const skipped: string[] = [];
   const shas = new Set<string>();
-  for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json")).sort()) {
+  for (const f of fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"))
+    .sort()) {
     let raw;
     try {
       raw = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
@@ -295,7 +358,9 @@ export function reduceResults(dir: string, allowMixed: boolean): { treeSha: stri
     // sidecar mechanism are "unattested".
     let sha = "unattested";
     try {
-      sha = JSON.parse(fs.readFileSync(path.join(dir, `${base}.meta.json`), "utf8")).skills_tree_sha ?? "unattested";
+      sha =
+        JSON.parse(fs.readFileSync(path.join(dir, `${base}.meta.json`), "utf8")).skills_tree_sha ??
+        "unattested";
     } catch {
       // no sidecar
     }
@@ -308,13 +373,18 @@ export function reduceResults(dir: string, allowMixed: boolean): { treeSha: stri
       score: res.score,
       pass: res.success,
       agent_model: provider?.config?.model ?? "codex-default",
-      judge_model: typeof judge === "string" ? judge.replace(/^anthropic:messages:/, "") : (judge?.config?.model ?? "unknown"),
+      judge_model:
+        typeof judge === "string"
+          ? judge.replace(/^anthropic:messages:/, "")
+          : (judge?.config?.model ?? "unknown"),
       latency_ms: res.latencyMs,
       tokens: (res.tokenUsage?.total ?? 0) + (res.tokenUsage?.assertions?.total ?? 0),
     });
   }
   if (shas.size > 1 && !allowMixed) {
-    throw new Error(`results span multiple skills-tree revisions (${[...shas].join(", ")}); rerun stale ones or pass --allow-mixed`);
+    throw new Error(
+      `results span multiple skills-tree revisions (${[...shas].join(", ")}); rerun stale ones or pass --allow-mixed`,
+    );
   }
   const treeSha = shas.size === 1 ? [...shas][0] : shas.size === 0 ? "none" : "mixed";
   return { treeSha, entries, skipped };
@@ -329,7 +399,10 @@ function entryKey(e: ScorecardEntry): string {
 // A consumer whose results/ holds only today's rerun would otherwise overwrite
 // a committed same-date scorecard with a fraction of its entries. Merge instead:
 // fresh entries win, untouched ones survive.
-export function mergeScorecard(existing: ScorecardEntry[], fresh: ScorecardEntry[]): { entries: ScorecardEntry[]; carried: number } {
+export function mergeScorecard(
+  existing: ScorecardEntry[],
+  fresh: ScorecardEntry[],
+): { entries: ScorecardEntry[]; carried: number } {
   const byKey = new Map<string, ScorecardEntry>();
   for (const e of existing) byKey.set(entryKey(e), e);
   let carried = byKey.size;
@@ -337,7 +410,9 @@ export function mergeScorecard(existing: ScorecardEntry[], fresh: ScorecardEntry
     if (byKey.has(entryKey(e))) carried--;
     byKey.set(entryKey(e), e);
   }
-  const entries = [...byKey.values()].sort((a, b) => (entryKey(a) < entryKey(b) ? -1 : entryKey(a) > entryKey(b) ? 1 : 0));
+  const entries = [...byKey.values()].sort((a, b) =>
+    entryKey(a) < entryKey(b) ? -1 : entryKey(a) > entryKey(b) ? 1 : 0,
+  );
   return { entries, carried };
 }
 
@@ -357,7 +432,8 @@ function readExistingScorecard(out: string): ScorecardEntry[] {
     throw new Error(`existing scorecard ${out} is not valid JSON; refusing to overwrite it`);
   }
   const scenarios = (prev as { scenarios?: unknown } | undefined)?.scenarios;
-  if (!Array.isArray(scenarios)) throw new Error(`existing scorecard ${out} has no scenarios array; refusing to overwrite it`);
+  if (!Array.isArray(scenarios))
+    throw new Error(`existing scorecard ${out} has no scenarios array; refusing to overwrite it`);
   return scenarios as ScorecardEntry[];
 }
 
@@ -365,19 +441,26 @@ function cmdSummarize(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
   const dirs = stateDirs(resolveRoot(flags));
-  if (!fs.existsSync(dirs.results)) fail(`no results directory at ${dirs.results} — run some evals first`);
+  if (!fs.existsSync(dirs.results))
+    fail(`no results directory at ${dirs.results} — run some evals first`);
   const { entries, skipped } = reduceResults(dirs.results, flags.get("--allow-mixed") === true);
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const existing = readExistingScorecard(out);
   const merged = mergeScorecard(existing, entries);
-  const scorecard = { ran_at: new Date().toISOString(), skills_tree_sha: treeShaOf(merged.entries), scenarios: merged.entries };
+  const scorecard = {
+    ran_at: new Date().toISOString(),
+    skills_tree_sha: treeShaOf(merged.entries),
+    scenarios: merged.entries,
+  };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
   console.log(
     `${out}: ${merged.entries.length} scenario(s), ${merged.entries.filter((e) => e.pass).length} passing, ${skipped.length} skipped file(s)`,
   );
   if (existing.length > 0) {
-    console.log(`merged into today's scorecard: ${entries.length} from this run, ${merged.carried} carried over`);
+    console.log(
+      `merged into today's scorecard: ${entries.length} from this run, ${merged.carried} carried over`,
+    );
   }
 }
 

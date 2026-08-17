@@ -23,13 +23,16 @@ function safeSlice(text: string, end: number): string {
 }
 
 function capped(rel: string, text: string): string {
-  if (text.length <= PER_FILE_CAP) return `=== OUTPUT FILE: ${rel} ===\n${text}\n=== END OUTPUT FILE ===`;
+  if (text.length <= PER_FILE_CAP)
+    return `=== OUTPUT FILE: ${rel} ===\n${text}\n=== END OUTPUT FILE ===`;
   return `=== OUTPUT FILE: ${rel} (truncated: showing ${PER_FILE_CAP} of ${text.length} chars) ===\n${safeSlice(text, PER_FILE_CAP)}\n=== END OUTPUT FILE ===`;
 }
 
 export default function transform(output: string, context: TransformContext): string {
   const workdir = context.vars.workdir;
-  const manifest: Record<string, string> = JSON.parse(fs.readFileSync(context.vars.manifest, "utf8"));
+  const manifest: Record<string, string> = JSON.parse(
+    fs.readFileSync(context.vars.manifest, "utf8"),
+  );
   const sections: { rel: string; text: string }[] = [];
   const visited = new Set<string>();
   const walk = (dir: string): void => {
@@ -61,7 +64,11 @@ export default function transform(output: string, context: TransformContext): st
   };
   walk(workdir);
   for (const rel of Object.keys(manifest)) {
-    if (!visited.has(rel)) sections.push({ rel, text: `=== DELETED FILE: ${rel} === (input file removed by the agent)` });
+    if (!visited.has(rel))
+      sections.push({
+        rel,
+        text: `=== DELETED FILE: ${rel} === (input file removed by the agent)`,
+      });
   }
   if (sections.length === 0) return output;
   // Deterministic path order: the total cap must not drop files by readdir

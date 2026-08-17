@@ -48,19 +48,31 @@ export interface RunPaths {
 
 export function loadScenario(scenarioDir: string): Scenario {
   const match = scenarioDir.match(/skills\/([^/]+)\/evals\/([^/]+)$/);
-  if (!match) throw new Error(`not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`);
+  if (!match)
+    throw new Error(
+      `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
+    );
   const [, skill, scenario] = match;
 
   const taskMd = fs.readFileSync(path.join(scenarioDir, "task.md"), "utf8");
-  const criteria: Criteria = JSON.parse(fs.readFileSync(path.join(scenarioDir, "criteria.json"), "utf8"));
-  if (criteria.type !== "weighted_checklist" || !Array.isArray(criteria.checklist) || criteria.checklist.length === 0) {
+  const criteria: Criteria = JSON.parse(
+    fs.readFileSync(path.join(scenarioDir, "criteria.json"), "utf8"),
+  );
+  if (
+    criteria.type !== "weighted_checklist" ||
+    !Array.isArray(criteria.checklist) ||
+    criteria.checklist.length === 0
+  ) {
     throw new Error(`unsupported or empty criteria in ${scenarioDir}`);
   }
   for (const item of criteria.checklist) {
     const ok =
-      typeof item?.name === "string" && item.name.trim() !== "" &&
-      typeof item?.description === "string" && item.description.trim() !== "" &&
-      Number.isFinite(item?.max_score) && item.max_score > 0;
+      typeof item?.name === "string" &&
+      item.name.trim() !== "" &&
+      typeof item?.description === "string" &&
+      item.description.trim() !== "" &&
+      Number.isFinite(item?.max_score) &&
+      item.max_score > 0;
     if (!ok) throw new Error(`invalid checklist item in ${scenarioDir}: ${JSON.stringify(item)}`);
   }
 
@@ -86,7 +98,10 @@ export function loadScenario(scenarioDir: string): Scenario {
 // generateRun names its scratch dir and cli.ts names result files with this.
 export function runNameFor(scenarioDir: string, harness: Harness): string {
   const m = path.resolve(scenarioDir).match(/skills\/([^/]+)\/evals\/([^/]+)$/);
-  if (!m) throw new Error(`not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`);
+  if (!m)
+    throw new Error(
+      `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
+    );
   return harness === "codex" ? `${m[1]}--${m[2]}--codex` : `${m[1]}--${m[2]}`;
 }
 
@@ -102,21 +117,30 @@ function frontmatterRange(text: string): [number, number] | null {
 export function isHiddenSkill(skillMd: string): boolean {
   const range = frontmatterRange(skillMd);
   if (!range) return false;
-  return skillMd.split("\n").slice(range[0], range[1]).some((l) => /^disable-model-invocation:/.test(l));
+  return skillMd
+    .split("\n")
+    .slice(range[0], range[1])
+    .some((l) => l.startsWith("disable-model-invocation:"));
 }
 
 export function stripHiddenFlag(skillMd: string): string {
   const range = frontmatterRange(skillMd);
   if (!range) return skillMd;
   const lines = skillMd.split("\n");
-  const kept = lines.filter((l, i) => !(i >= range[0] && i < range[1] && /^disable-model-invocation:/.test(l)));
+  const kept = lines.filter(
+    (l, i) => !(i >= range[0] && i < range[1] && l.startsWith("disable-model-invocation:")),
+  );
   return kept.join("\n");
 }
 
 // Reserved top-level workdir entries: fixtures may not write agent config roots.
 const RESERVED = new Set([".claude", ".agents"]);
 
-export function materialize(s: Scenario, runDir: string, harness: Harness): { workdir: string; manifestPath: string } {
+export function materialize(
+  s: Scenario,
+  runDir: string,
+  harness: Harness,
+): { workdir: string; manifestPath: string } {
   const workdir = path.join(runDir, "workdir");
   fs.rmSync(runDir, { recursive: true, force: true });
   fs.mkdirSync(workdir, { recursive: true });
@@ -128,8 +152,10 @@ export function materialize(s: Scenario, runDir: string, harness: Harness): { wo
   const planned = s.files.map((f) => {
     const dest = path.resolve(workdir, f.name);
     const rel = path.relative(workdir, dest);
-    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`embedded file escapes workdir: ${f.name}`);
-    if (RESERVED.has(rel.split(path.sep)[0])) throw new Error(`embedded file targets reserved dir: ${f.name}`);
+    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel))
+      throw new Error(`embedded file escapes workdir: ${f.name}`);
+    if (RESERVED.has(rel.split(path.sep)[0]))
+      throw new Error(`embedded file targets reserved dir: ${f.name}`);
     if (seen.has(dest)) throw new Error(`duplicate embedded file: ${f.name}`);
     seen.add(dest);
     return { dest, content: f.content };
@@ -171,7 +197,9 @@ export function materialize(s: Scenario, runDir: string, harness: Harness): { wo
       if (e.isDirectory()) {
         if (e.name !== ".claude") walk(p);
       } else {
-        manifest[path.relative(workdir, p)] = createHash("sha256").update(fs.readFileSync(p)).digest("hex");
+        manifest[path.relative(workdir, p)] = createHash("sha256")
+          .update(fs.readFileSync(p))
+          .digest("hex");
       }
     }
   };
@@ -212,7 +240,13 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string): object
   };
 }
 
-export function buildConfig(s: Scenario, workdir: string, manifestPath: string, opts: RunOptions, transformPath: string): object {
+export function buildConfig(
+  s: Scenario,
+  workdir: string,
+  manifestPath: string,
+  opts: RunOptions,
+  transformPath: string,
+): object {
   return {
     description: `${s.skill}/${s.scenario}`,
     prompts: ["{{task}}"],
@@ -299,7 +333,11 @@ export function sdkNodeModulesDir(): string | undefined {
 
 // Full pipeline: load + materialize + write promptfooconfig.json under the
 // caller's scratch dir.
-export function generateRun(scenarioDir: string, opts: RunOptions, paths: RunPaths): { name: string; configPath: string } {
+export function generateRun(
+  scenarioDir: string,
+  opts: RunOptions,
+  paths: RunPaths,
+): { name: string; configPath: string } {
   const s = loadScenario(scenarioDir);
   const name = runNameFor(scenarioDir, opts.harness);
   const runDir = path.join(paths.scratchDir, name);
