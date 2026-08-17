@@ -1,6 +1,6 @@
 ![skillcheck — lint and eval harness for agent skills.](https://uinaf.dev/og/banner/skillcheck.png)
 
-# @uinaf/skillcheck
+# uinaf/skillcheck
 
 lint and eval harness for agent skills. one CLI with two halves: a keyless
 structural lint any repo can run in CI, and a promptfoo-driven eval loop that
