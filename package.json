@@ -1,6 +1,6 @@
 {
   "name": "skillcheck",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Lint and eval harness for agent skills",
   "license": "MIT",
   "author": "undefined is not a function LLC",

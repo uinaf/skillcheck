@@ -40,6 +40,10 @@ installs the skill under test into that workdir, drives the agent, and grades
 the files it wrote. Exit 0 pass, 1 graded fail, 2 error (promptfoo produced no
 usable result).
 
+A test that errored was never graded, so it exits 2 and prints the provider's
+message. It is never reported as `FAIL score=0.0000` and it writes no
+provenance sidecar — only a real judged verdict can fail a run.
+
 Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
 `--max-turns 50`. On the codex harness, omitting `--agent` leaves the model to
 the Codex CLI's own default.
@@ -67,6 +71,13 @@ skillcheck summarize [--allow-mixed]
 Reduces `<root>/.skillcheck/results/*.json` into
 `<root>/.skillcheck/scorecards/<UTC-date>.json`: one entry per scenario with
 skill, scenario, harness, tree sha, score, pass, both models, latency, tokens.
+
+If a scorecard for today already exists, the two are merged on
+`(skill, scenario, harness)`: entries from this run win, entries it did not
+touch survive, and the merge is reported on stdout. Summarizing after rerunning
+six of twenty-nine scenarios therefore leaves twenty-nine rows in the file, not
+six. A same-date file that cannot be parsed stops the write instead of being
+overwritten.
 
 Files that are not promptfoo results are skipped with a warning rather than
 failing the reduction.

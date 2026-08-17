@@ -98,6 +98,37 @@ interface RunOutcome {
   resultPath: string;
   score?: number;
   pass?: boolean;
+  error?: string;
+}
+
+export interface Verdict {
+  score?: number;
+  pass?: boolean;
+  error?: string;
+}
+
+// A promptfoo test that errored was never graded — it carries an `error` and
+// lands in stats.errors with nothing scored. Reporting that as score=0 FAIL
+// would let a transport or resolution failure masquerade as a judge's verdict,
+// so an errored result stays an ERROR and exits 2 per the documented contract.
+export function classifyResult(raw: unknown): Verdict {
+  const root = raw as
+    | { results?: { results?: unknown[]; stats?: { successes?: number; failures?: number; errors?: number } } }
+    | undefined;
+  const res = root?.results?.results?.[0] as { error?: unknown; score?: unknown; success?: unknown } | undefined;
+  if (res === undefined) return { error: "promptfoo output carried no result" };
+
+  const message = typeof res.error === "string" ? res.error.trim() : "";
+  if (message !== "") return { error: message };
+
+  const stats = root?.results?.stats;
+  if (stats !== undefined && (stats.errors ?? 0) > 0 && (stats.successes ?? 0) === 0 && (stats.failures ?? 0) === 0) {
+    return { error: "promptfoo reported an errored test with nothing graded" };
+  }
+  if (typeof res.score !== "number" || typeof res.success !== "boolean") {
+    return { error: "promptfoo result carried no usable score" };
+  }
+  return { score: res.score, pass: res.success };
 }
 
 function gitHead(root: string): string {
@@ -131,18 +162,24 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const rc = r.status ?? 1; // null status (signal) counts as failure
   const outcome: RunOutcome = { name, rc, resultPath };
   if (rc !== 0) return outcome; // ERROR regardless of what's on disk
+
+  let verdict: Verdict;
   try {
-    const res = JSON.parse(fs.readFileSync(resultPath, "utf8")).results.results[0];
-    outcome.score = res.score;
-    outcome.pass = res.success;
-    // Provenance sidecar: which skills tree this result was produced against,
-    // and which harness build produced it.
+    verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")));
+  } catch {
+    verdict = { error: "promptfoo produced no parseable result file" };
+  }
+  outcome.score = verdict.score;
+  outcome.pass = verdict.pass;
+  outcome.error = verdict.error;
+
+  // Provenance is only written for a graded result: an errored run has nothing
+  // to attest, and a sidecar without a score would poison the scorecard.
+  if (verdict.score !== undefined) {
     fs.writeFileSync(
       metaPath(resultPath),
       JSON.stringify({ skills_tree_sha: sha, harness: opts.harness, ran_at: new Date().toISOString(), tool_version: toolVersion() }, null, 2) + "\n",
     );
-  } catch {
-    // rc=0 but no parseable result — leave score/pass undefined; caller reports ERROR
   }
   return outcome;
 }
@@ -177,7 +214,7 @@ function cmdRun(argv: string[]): void {
   if (positional.length !== 1) fail("usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--harness claude|codex]");
   const o = runScenario(positional[0], runOptions(flags), resolveRoot(flags));
   if (o.score === undefined) {
-    console.error(`ERROR ${o.name}: promptfoo rc=${o.rc}, no usable result`);
+    console.error(`ERROR ${o.name}: ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
     process.exit(2);
   }
   console.log(`${o.pass ? "PASS" : "FAIL"} ${o.name} score=${o.score.toFixed(4)} (results: ${o.resultPath})`);
@@ -203,7 +240,7 @@ function cmdSweep(argv: string[]): void {
     const o = runScenario(dir, opts, root);
     if (o.score === undefined) {
       errored++;
-      console.log(`ERROR ${o.name} promptfoo rc=${o.rc}, no usable result`);
+      console.log(`ERROR ${o.name} ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
     } else if (o.pass) {
       passed++;
       console.log(`PASS  ${o.name} score=${o.score.toFixed(4)}`);
@@ -216,7 +253,7 @@ function cmdSweep(argv: string[]): void {
   process.exit(errored > 0 ? 2 : failed > 0 ? 1 : 0);
 }
 
-interface ScorecardEntry {
+export interface ScorecardEntry {
   skill: string;
   scenario: string;
   harness: Harness;
@@ -283,17 +320,65 @@ export function reduceResults(dir: string, allowMixed: boolean): { treeSha: stri
   return { treeSha, entries, skipped };
 }
 
+// One scenario's identity in a scorecard. Rerunning a subset must update those
+// rows and leave every other row alone.
+function entryKey(e: ScorecardEntry): string {
+  return [e.skill, e.scenario, e.harness].join(" ");
+}
+
+// A consumer whose results/ holds only today's rerun would otherwise overwrite
+// a committed same-date scorecard with a fraction of its entries. Merge instead:
+// fresh entries win, untouched ones survive.
+export function mergeScorecard(existing: ScorecardEntry[], fresh: ScorecardEntry[]): { entries: ScorecardEntry[]; carried: number } {
+  const byKey = new Map<string, ScorecardEntry>();
+  for (const e of existing) byKey.set(entryKey(e), e);
+  let carried = byKey.size;
+  for (const e of fresh) {
+    if (byKey.has(entryKey(e))) carried--;
+    byKey.set(entryKey(e), e);
+  }
+  const entries = [...byKey.values()].sort((a, b) => (entryKey(a) < entryKey(b) ? -1 : entryKey(a) > entryKey(b) ? 1 : 0));
+  return { entries, carried };
+}
+
+export function treeShaOf(entries: ScorecardEntry[]): string {
+  const shas = new Set(entries.map((e) => e.skills_tree_sha));
+  return shas.size === 1 ? [...shas][0] : shas.size === 0 ? "none" : "mixed";
+}
+
+// Reads a scorecard that is about to be merged into. A same-date file that
+// cannot be understood is a stop, not a licence to overwrite it.
+function readExistingScorecard(out: string): ScorecardEntry[] {
+  if (!fs.existsSync(out)) return [];
+  let prev: unknown;
+  try {
+    prev = JSON.parse(fs.readFileSync(out, "utf8"));
+  } catch {
+    throw new Error(`existing scorecard ${out} is not valid JSON; refusing to overwrite it`);
+  }
+  const scenarios = (prev as { scenarios?: unknown } | undefined)?.scenarios;
+  if (!Array.isArray(scenarios)) throw new Error(`existing scorecard ${out} has no scenarios array; refusing to overwrite it`);
+  return scenarios as ScorecardEntry[];
+}
+
 function cmdSummarize(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
   const dirs = stateDirs(resolveRoot(flags));
   if (!fs.existsSync(dirs.results)) fail(`no results directory at ${dirs.results} — run some evals first`);
-  const { treeSha, entries, skipped } = reduceResults(dirs.results, flags.get("--allow-mixed") === true);
-  const scorecard = { ran_at: new Date().toISOString(), skills_tree_sha: treeSha, scenarios: entries };
+  const { entries, skipped } = reduceResults(dirs.results, flags.get("--allow-mixed") === true);
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+  const existing = readExistingScorecard(out);
+  const merged = mergeScorecard(existing, entries);
+  const scorecard = { ran_at: new Date().toISOString(), skills_tree_sha: treeShaOf(merged.entries), scenarios: merged.entries };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
-  console.log(`${out}: ${entries.length} scenario(s), ${entries.filter((e) => e.pass).length} passing, ${skipped.length} skipped file(s)`);
+  console.log(
+    `${out}: ${merged.entries.length} scenario(s), ${merged.entries.filter((e) => e.pass).length} passing, ${skipped.length} skipped file(s)`,
+  );
+  if (existing.length > 0) {
+    console.log(`merged into today's scorecard: ${entries.length} from this run, ${merged.carried} carried over`);
+  }
 }
 
 // lint takes the root as an optional positional too: `skillcheck lint <dir>` is

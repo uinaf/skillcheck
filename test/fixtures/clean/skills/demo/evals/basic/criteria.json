@@ -1,0 +1,16 @@
+{
+  "type": "weighted_checklist",
+  "context": "A fixture scenario used only to exercise materialization. It is never graded against a model.",
+  "checklist": [
+    {
+      "name": "outcome-first",
+      "description": "The rewritten note opens with the eleven-minute deploy, not with the cause.",
+      "max_score": 2
+    },
+    {
+      "name": "same-file",
+      "description": "The deliverable is still note.md.",
+      "max_score": 1
+    }
+  ]
+}

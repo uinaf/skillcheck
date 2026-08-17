@@ -4,12 +4,24 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { parseArgs, parseMaxTurns, reduceResults, resolveRoot, stateDirs, toolVersion } from "../src/cli.ts";
-import { runNameFor } from "../src/scenario.ts";
+import {
+  classifyResult,
+  mergeScorecard,
+  parseArgs,
+  parseMaxTurns,
+  reduceResults,
+  resolveRoot,
+  stateDirs,
+  toolVersion,
+  treeShaOf,
+  type ScorecardEntry,
+} from "../src/cli.ts";
+import { generateRun, runNameFor, sdkNodeModulesDir } from "../src/scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cli = path.join(here, "..", "src", "cli.ts");
@@ -129,6 +141,113 @@ test("parseMaxTurns validates values", () => {
   assert.throws(() => parseMaxTurns("-3"));
   assert.throws(() => parseMaxTurns("Infinity"));
   assert.throws(() => parseMaxTurns("2.5"));
+});
+
+test("classifyResult: an errored test is never a scored FAIL", () => {
+  // Shape promptfoo writes when the provider blows up: 0 pass / 0 fail / 1 error.
+  const errored = {
+    results: {
+      results: [{ score: 0, success: false, error: "Error calling Claude Agent SDK: package could not be resolved" }],
+      stats: { successes: 0, failures: 0, errors: 1 },
+    },
+  };
+  const v = classifyResult(errored);
+  assert.equal(v.score, undefined);
+  assert.equal(v.pass, undefined);
+  assert.match(v.error ?? "", /could not be resolved/);
+});
+
+test("classifyResult: stats-only errors, missing results, and unusable scores", () => {
+  const statsOnly = { results: { results: [{ score: 0, success: false }], stats: { successes: 0, failures: 0, errors: 1 } } };
+  assert.match(classifyResult(statsOnly).error ?? "", /nothing graded/);
+
+  assert.match(classifyResult({ results: { results: [] } }).error ?? "", /no result/);
+  assert.match(classifyResult(undefined).error ?? "", /no result/);
+  assert.match(classifyResult({ results: { results: [{ score: "nope", success: false }] } }).error ?? "", /no usable score/);
+});
+
+test("classifyResult: graded verdicts still pass through untouched", () => {
+  const graded = (score: number, success: boolean) => ({
+    results: { results: [{ score, success }], stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 } },
+  });
+  assert.deepEqual(classifyResult(graded(0.91, true)), { score: 0.91, pass: true });
+  assert.deepEqual(classifyResult(graded(0, false)), { score: 0, pass: false });
+});
+
+function entry(skill: string, scenario: string, score: number, sha = "sha1"): ScorecardEntry {
+  return {
+    skill,
+    scenario,
+    harness: "claude",
+    skills_tree_sha: sha,
+    score,
+    pass: score >= 0.7,
+    agent_model: "agent-model",
+    judge_model: "judge-model",
+    latency_ms: 1000,
+    tokens: 100,
+  };
+}
+
+test("mergeScorecard: a partial rerun updates its rows and carries the rest", () => {
+  const existing = [entry("a", "one", 0.5), entry("b", "two", 0.9), entry("c", "three", 0.8)];
+  const fresh = [entry("a", "one", 0.95)];
+  const merged = mergeScorecard(existing, fresh);
+
+  assert.equal(merged.entries.length, 3, "no committed entry may be dropped");
+  assert.equal(merged.carried, 2);
+  assert.equal(merged.entries.find((e) => e.skill === "a")?.score, 0.95, "the rerun wins");
+  assert.equal(merged.entries.find((e) => e.skill === "b")?.score, 0.9, "the untouched entry survives");
+  assert.deepEqual(merged.entries.map((e) => e.skill), ["a", "b", "c"], "deterministic order");
+});
+
+test("mergeScorecard: harness is part of the identity, empty cases are stable", () => {
+  const claude = entry("a", "one", 0.5);
+  const codex: ScorecardEntry = { ...claude, harness: "codex", score: 0.6 };
+  const merged = mergeScorecard([claude], [codex]);
+  assert.equal(merged.entries.length, 2, "the same scenario on two harnesses are two rows");
+  assert.equal(merged.carried, 1);
+
+  assert.deepEqual(mergeScorecard([], []).entries, []);
+  assert.equal(mergeScorecard([], [claude]).carried, 0);
+});
+
+test("treeShaOf: uniform, mixed, and empty", () => {
+  assert.equal(treeShaOf([entry("a", "one", 0.5), entry("b", "two", 0.5)]), "sha1");
+  assert.equal(treeShaOf([entry("a", "one", 0.5), entry("b", "two", 0.5, "sha2")]), "mixed");
+  assert.equal(treeShaOf([]), "none");
+});
+
+test("generateRun: the scratch dir can resolve the agent SDK", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
+  const { name, configPath } = generateRun(
+    path.join(fixtures, "clean", "skills", "demo", "evals", "basic"),
+    { harness: "claude", judgeModel: "claude-opus-5" },
+    { scratchDir: path.join(dir, "scratch"), transformPath: path.join(here, "..", "src", "transform.ts") },
+  );
+  assert.equal(name, "demo--basic");
+
+  const runDir = path.dirname(configPath);
+  // promptfoo resolves the provider SDK from the config's directory, which is
+  // in the consumer repo and has no node_modules of its own.
+  const require = createRequire(path.join(runDir, "resolver.js"));
+  assert.ok(require.resolve("@anthropic-ai/claude-agent-sdk"), "agent SDK must resolve from the scratch dir");
+  assert.ok(fs.lstatSync(path.join(runDir, "node_modules")).isSymbolicLink());
+
+  // The link must not leak into the graded workdir or the manifest.
+  assert.equal(fs.existsSync(path.join(runDir, "workdir", "node_modules")), false);
+  const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+  assert.deepEqual(Object.keys(manifest).filter((k) => k.includes("node_modules")), []);
+  assert.ok(Object.keys(manifest).includes("note.md"), "embedded input files are still materialized");
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("sdkNodeModulesDir: points at a directory that really holds the SDK", () => {
+  const dir = sdkNodeModulesDir();
+  assert.ok(dir !== undefined);
+  assert.equal(path.basename(dir), "node_modules");
+  assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk")));
 });
 
 function runCli(args: string[], cwd?: string): { rc: number; stdout: string; stderr: string } {

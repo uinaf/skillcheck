@@ -3,6 +3,7 @@
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -273,6 +274,31 @@ export function buildConfig(s: Scenario, workdir: string, manifestPath: string, 
   };
 }
 
+// The provider SDKs promptfoo has to load for the agent and judge legs.
+const SDK_PACKAGES = ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"];
+
+// promptfoo resolves a provider's SDK by walking up from the config file, and
+// the scratch dir now lives in the consumer repo, which need not have any
+// node_modules above it. Locate the directory that actually holds skillcheck's
+// own dependencies — wherever the install landed, hoisted or nested — rather
+// than assuming a layout.
+export function sdkNodeModulesDir(): string | undefined {
+  const require = createRequire(import.meta.url);
+  for (const pkg of SDK_PACKAGES) {
+    let entry: string;
+    try {
+      entry = require.resolve(pkg);
+    } catch {
+      continue;
+    }
+    for (let dir = path.dirname(entry); ; dir = path.dirname(dir)) {
+      if (path.basename(dir) === "node_modules") return dir;
+      if (path.dirname(dir) === dir) break;
+    }
+  }
+  return undefined;
+}
+
 // Full pipeline: load + materialize + write promptfooconfig.json under the
 // caller's scratch dir.
 export function generateRun(scenarioDir: string, opts: RunOptions, paths: RunPaths): { name: string; configPath: string } {
@@ -280,6 +306,18 @@ export function generateRun(scenarioDir: string, opts: RunOptions, paths: RunPat
   const name = runNameFor(scenarioDir, opts.harness);
   const runDir = path.join(paths.scratchDir, name);
   const { workdir, manifestPath } = materialize(s, runDir, opts.harness);
+
+  // Make the provider SDKs resolvable from the config's own directory, or the
+  // run dies in seconds with "The @anthropic-ai/claude-agent-sdk package could
+  // not be resolved". The link sits beside the config and never inside workdir,
+  // so the agent never sees it and the manifest never hashes it.
+  const sdkDir = sdkNodeModulesDir();
+  if (sdkDir !== undefined) {
+    const link = path.join(runDir, "node_modules");
+    fs.rmSync(link, { recursive: true, force: true });
+    fs.symlinkSync(sdkDir, link, "dir");
+  }
+
   const config = buildConfig(s, workdir, manifestPath, opts, paths.transformPath);
   const configPath = path.join(runDir, "promptfooconfig.json");
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
