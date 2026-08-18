@@ -26,17 +26,17 @@ jobs:
       contents: read
     uses: ./.github/workflows/verify.yml
 
-  secrets:
+  scan:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     permissions:
       contents: read
-    uses: ./.github/workflows/secrets.yml
+    uses: uinaf/.github/.github/workflows/scan.yml@main
 
   # A skipped dependency skips its dependents, so `[skip ci]` is declared once
   # above and reaches this job through `needs`. The version writeback carries
   # that marker, which is what stops a release from releasing itself.
   release:
-    needs: [verify, secrets]
+    needs: [verify, scan]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
