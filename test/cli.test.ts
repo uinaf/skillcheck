@@ -81,6 +81,7 @@ test("runNameFor: harness-aware result names", () => {
   const dir = "/repo/skills/slopspec/evals/single-item-minimality";
   assert.equal(runNameFor(dir, "claude"), "slopspec--single-item-minimality");
   assert.equal(runNameFor(dir, "codex"), "slopspec--single-item-minimality--codex");
+  assert.equal(runNameFor(dir, "cursor"), "slopspec--single-item-minimality--cursor");
   assert.throws(() => runNameFor("/repo/not-a-scenario", "claude"), /not a scenario dir/);
 });
 
@@ -112,6 +113,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   writeResult(dir, "skillx--scen-a", 0.9, true, "sha1");
   writeResult(dir, "skillx--scen-b--codex", 0.4, false); // no sidecar → unattested... but mixed with sha1
+  writeResult(dir, "skillx--scen-c--cursor", 0.8, true, "sha1");
   fs.writeFileSync(path.join(dir, "broken.json"), "{not json");
   fs.writeFileSync(path.join(dir, "not-a-result.json"), JSON.stringify({ foo: 1 }));
 
@@ -121,7 +123,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const mixed = reduceResults(dir, true);
   assert.equal(mixed.treeSha, "mixed");
   assert.deepEqual(mixed.skipped.sort(), ["broken.json", "not-a-result.json"]);
-  assert.equal(mixed.entries.length, 2);
+  assert.equal(mixed.entries.length, 3);
 
   const a = mixed.entries.find((e) => e.scenario === "scen-a");
   assert.deepEqual(a, {
@@ -139,6 +141,9 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const b = mixed.entries.find((e) => e.scenario === "scen-b");
   assert.equal(b?.harness, "codex");
   assert.equal(b?.skills_tree_sha, "unattested");
+  const c = mixed.entries.find((e) => e.scenario === "scen-c");
+  assert.equal(c?.harness, "cursor");
+  assert.equal(c?.skill, "skillx");
 
   // Uniform shas reduce cleanly without allowMixed
   fs.writeFileSync(
@@ -147,7 +152,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   );
   const uniform = reduceResults(dir, false);
   assert.equal(uniform.treeSha, "sha1");
-  assert.equal(uniform.entries.length, 2);
+  assert.equal(uniform.entries.length, 3);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -277,6 +282,7 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
     {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
+      cursorProviderPath: path.join(here, "..", "src", "cursor-provider.ts"),
     },
   );
   assert.equal(name, "demo--basic");
@@ -306,6 +312,48 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
     Object.keys(manifest).includes("note.md"),
     "embedded input files are still materialized",
   );
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("generateRun: the cursor harness installs .cursor/skills and a file provider", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
+  const cursorProviderPath = path.join(here, "..", "src", "cursor-provider.ts");
+  const { name, configPath } = generateRun(
+    path.join(fixtures, "clean", "skills", "demo", "evals", "basic"),
+    { harness: "cursor", agentModel: "composer-2.5", judgeModel: "claude-opus-5" },
+    {
+      scratchDir: path.join(dir, "scratch"),
+      transformPath: path.join(here, "..", "src", "transform.ts"),
+      cursorProviderPath,
+    },
+  );
+  assert.equal(name, "demo--basic--cursor");
+
+  const workdir = path.join(path.dirname(configPath), "workdir");
+  // Cursor discovers .cursor/skills; the claude root must not be created.
+  assert.ok(fs.existsSync(path.join(workdir, ".cursor", "skills", "demo", "SKILL.md")));
+  assert.equal(fs.existsSync(path.join(workdir, ".claude")), false);
+  assert.equal(
+    fs.existsSync(path.join(workdir, ".cursor", "skills", "demo", "evals")),
+    false,
+    "criteria must not leak into the agent's context",
+  );
+
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  assert.deepEqual(config.providers, [
+    {
+      id: `file://${cursorProviderPath}`,
+      config: { model: "composer-2.5", working_dir: workdir },
+    },
+  ]);
+
+  // The installed skill copy is hashed into the manifest, so the transform
+  // reports it as an unchanged input rather than agent output.
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(path.dirname(configPath), "manifest.json"), "utf8"),
+  );
+  assert.ok(Object.keys(manifest).some((k) => k.startsWith(".cursor/skills/demo/")));
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

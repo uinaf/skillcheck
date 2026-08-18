@@ -45,8 +45,16 @@ message, and writes no provenance sidecar. it is never reported as
 `FAIL score=0.0000`; only a real judged verdict can fail a run.
 
 defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
-`--max-turns 50`. on the codex harness, omitting `--agent` leaves the model to
-the Codex CLI's own default.
+`--max-turns 50`. on the codex and cursor harnesses, omitting `--agent` leaves
+the model to that CLI's own default.
+
+`--harness cursor` drives the scenario through the Cursor Agent CLI
+(`cursor-agent` on PATH) with the skill installed under `.cursor/skills/`;
+`--agent` names a Cursor model id, e.g. `composer-2.5`. there is no promptfoo
+cursor provider, so the run uses this package's own provider module, which
+replays the CLI's `stream-json` output: the `result` event becomes the graded
+output and `SKILL.md` reads under `.cursor/skills/` become the `skill-used`
+evidence. the judge leg is unchanged.
 
 ## sweep
 
@@ -121,5 +129,6 @@ written inside the installed package.
 | `ANTHROPIC_API_KEY`                           | judge grades over `anthropic:messages:<model>` instead of the SDK |
 | `CODEX_HOME` (default `~/.codex`)             | where the codex harness finds the local `codex` CLI login         |
 | `OPENAI_API_KEY`                              | codex agent auth when there is no local login                     |
+| `CURSOR_API_KEY`                              | cursor agent auth; a logged-in `cursor-agent` also works          |
 
 the judge stays on the Anthropic selection regardless of the agent harness.

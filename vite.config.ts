@@ -9,12 +9,13 @@ export default defineConfig({
   },
 
   pack: {
-    // Two entries, not one. `cli.ts` spawns its transform by path —
-    // `path.join(here, "transform" + selfExt)` — so `transform.js` has to land
-    // beside `cli.js` as a real file that promptfoo can load by URL. `unbundle`
-    // keeps the rest of the module graph 1:1 with `src/`, which is what the
-    // committed `tsc` output used to be.
-    entry: ["src/cli.ts", "src/transform.ts"],
+    // Three entries, not one. `cli.ts` hands promptfoo file URLs built from
+    // its own directory — `path.join(here, "transform" + selfExt)` and the
+    // cursor provider alike — so both modules have to land beside `cli.js` as
+    // real files promptfoo can load by URL. `unbundle` keeps the rest of the
+    // module graph 1:1 with `src/`, which is what the committed `tsc` output
+    // used to be.
+    entry: ["src/cli.ts", "src/transform.ts", "src/cursor-provider.ts"],
     unbundle: true,
     platform: "node",
     format: ["esm"],
