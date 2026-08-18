@@ -32,14 +32,13 @@ Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test r
 
 ## Pipelines
 
-| Workflow                             | Trigger                          | Jobs                                                      |
-| ------------------------------------ | -------------------------------- | --------------------------------------------------------- |
-| `.github/workflows/verify.yml`       | PR, merge queue, `workflow_call` | `verify`, `consumer`; the one definition, called by below |
-| `.github/workflows/release.yml`      | push to `main`                   | (verify + secrets) → npm publish (`release` environment)  |
-| `.github/workflows/secrets.yml`      | PR, `workflow_call`, weekly      | gitleaks, trufflehog                                      |
-| `.github/workflows/actions-lint.yml` | `.github/workflows/**`           | actionlint, zizmor; third-party, digest-pinned, in Docker |
+| Workflow                        | Trigger                          | Jobs                                                                                    |
+| ------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
+| `.github/workflows/verify.yml`  | PR, merge queue, `workflow_call` | `verify`, `consumer`; the one definition, called by below                               |
+| `.github/workflows/release.yml` | push to `main`                   | (verify + scan) → npm publish (`release` environment)                                   |
+| `.github/workflows/scan.yml`    | PR, weekly                       | caller for the shared scan in `uinaf/.github`: gitleaks, trufflehog, actionlint, zizmor |
 
-`verify` and `secrets` run in parallel; `release` waits on both. `[skip ci]` is declared once on the two gates, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
+`verify` and `scan` run in parallel; `release` waits on both. `[skip ci]` is declared once on the two gates, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
 
 `consumer` is the job that packs the tarball, installs it into a throwaway project, and runs `skillcheck lint` from `node_modules/.bin`. `verify` proves the source; only that proves the artifact.
 
