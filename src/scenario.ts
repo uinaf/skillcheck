@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-export type Harness = "claude" | "codex";
+export type Harness = "claude" | "codex" | "cursor";
 
 export interface ChecklistItem {
   name: string;
@@ -33,7 +33,7 @@ export interface Scenario {
 
 export interface RunOptions {
   harness: Harness;
-  agentModel?: string; // undefined on codex = let the Codex CLI pick its default
+  agentModel?: string; // undefined on codex/cursor = let that CLI pick its default
   judgeModel: string;
   maxTurns?: number; // claude agent leg only; default 50
 }
@@ -44,6 +44,7 @@ export interface RunOptions {
 export interface RunPaths {
   scratchDir: string;
   transformPath: string;
+  cursorProviderPath: string;
 }
 
 export function loadScenario(scenarioDir: string): Scenario {
@@ -102,7 +103,7 @@ export function runNameFor(scenarioDir: string, harness: Harness): string {
     throw new Error(
       `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
     );
-  return harness === "codex" ? `${m[1]}--${m[2]}--codex` : `${m[1]}--${m[2]}`;
+  return harness === "claude" ? `${m[1]}--${m[2]}` : `${m[1]}--${m[2]}--${harness}`;
 }
 
 // Frontmatter helpers: the disable-model-invocation contract lives only in the
@@ -134,7 +135,7 @@ export function stripHiddenFlag(skillMd: string): string {
 }
 
 // Reserved top-level workdir entries: fixtures may not write agent config roots.
-const RESERVED = new Set([".claude", ".agents"]);
+const RESERVED = new Set([".claude", ".agents", ".cursor"]);
 
 export function materialize(
   s: Scenario,
@@ -167,8 +168,10 @@ export function materialize(
 
   // Install the skill under test, excluding its evals (criteria must not leak
   // into the agent's context). Claude discovers .claude/skills/; codex
-  // discovers .agents/skills/ — install both for codex.
-  const roots = harness === "codex" ? [".claude", ".agents"] : [".claude"];
+  // discovers .agents/skills/ (install both for codex); cursor discovers
+  // .cursor/skills/.
+  const roots =
+    harness === "codex" ? [".claude", ".agents"] : harness === "cursor" ? [".cursor"] : [".claude"];
   for (const root of roots) {
     fs.cpSync(s.skillDir, path.join(workdir, root, "skills", s.skill), {
       recursive: true,
@@ -189,7 +192,8 @@ export function materialize(
 
   // Manifest of pre-existing files so transform.ts can find what the agent
   // wrote. Only .claude/ is excluded (matching transform.ts's walk): .agents/
-  // files are hashed so the transform sees them as unchanged inputs.
+  // and .cursor/ files are hashed so the transform sees them as unchanged
+  // inputs.
   const manifest: Record<string, string> = {};
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -209,7 +213,18 @@ export function materialize(
   return { workdir, manifestPath };
 }
 
-function agentProvider(opts: RunOptions, workdir: string, skill: string): object {
+function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: RunPaths): object {
+  if (opts.harness === "cursor") {
+    // No promptfoo cursor provider exists; the config points at this package's
+    // own provider module by file URL, exactly like the transform.
+    return {
+      id: `file://${paths.cursorProviderPath}`,
+      config: {
+        ...(opts.agentModel ? { model: opts.agentModel } : {}), // omitted = current Cursor CLI default
+        working_dir: workdir,
+      },
+    };
+  }
   if (opts.harness === "codex") {
     return {
       id: "openai:codex-sdk",
@@ -245,12 +260,12 @@ export function buildConfig(
   workdir: string,
   manifestPath: string,
   opts: RunOptions,
-  transformPath: string,
+  paths: RunPaths,
 ): object {
   return {
     description: `${s.skill}/${s.scenario}`,
     prompts: ["{{task}}"],
-    providers: [agentProvider(opts, workdir, s.skill)],
+    providers: [agentProvider(opts, workdir, s.skill, paths)],
     defaultTest: {
       options: {
         // With ANTHROPIC_API_KEY set, grade over the plain messages API;
@@ -280,7 +295,7 @@ export function buildConfig(
                 },
               },
             },
-        transform: `file://${transformPath}`,
+        transform: `file://${paths.transformPath}`,
       },
     },
     tests: [
@@ -354,7 +369,7 @@ export function generateRun(
     fs.symlinkSync(sdkDir, link, "dir");
   }
 
-  const config = buildConfig(s, workdir, manifestPath, opts, paths.transformPath);
+  const config = buildConfig(s, workdir, manifestPath, opts, paths);
   const configPath = path.join(runDir, "promptfooconfig.json");
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   return { name, configPath };

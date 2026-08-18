@@ -8,9 +8,9 @@ a scenario is two files in a frozen location:
 ```
 
 the path is the identity: `<skill>--<scenario>` names the run, the result file,
-and the scorecard entry. on the codex harness the name gains a `--codex` suffix,
-so both harnesses can hold results side by side. a directory missing either file
-is not discovered.
+and the scorecard entry. on the codex and cursor harnesses the name gains a
+`--codex` or `--cursor` suffix, so every harness can hold results side by side.
+a directory missing either file is not discovered.
 
 ## task.md
 
@@ -27,9 +27,9 @@ Fix the failing check in the config below.
 
 each block is replaced in the prompt with a pointer ("Input file `config.json`
 is available in your working directory.") and written to disk. destinations
-must stay under the workdir, must not collide, and must not target `.claude/` or
-`.agents/`, since a fixture that writes agent config would be configuring its
-own examiner.
+must stay under the workdir, must not collide, and must not target `.claude/`,
+`.agents/`, or `.cursor/`, since a fixture that writes agent config would be
+configuring its own examiner.
 
 write the task the way a user would write it. do not name the skill, describe
 its steps, or hint at the checklist: routing is part of what is being measured.
@@ -81,8 +81,9 @@ frontmatter block; body text mentioning the key does not count.
 ## the workdir
 
 per run, under `<root>/.skillcheck/scratch/<name>/`, rebuilt from scratch each
-time. the skill under test is installed at `.claude/skills/<skill>/` (and also
-`.agents/skills/<skill>/` on the codex harness) with its `evals/` directory
+time. the skill under test is installed where the harness discovers skills —
+`.claude/skills/<skill>/`, plus `.agents/skills/<skill>/` on codex, or
+`.cursor/skills/<skill>/` alone on cursor — with its `evals/` directory
 excluded, so criteria never leak into the agent's context.
 
 scenario quality is behavioral proof; [authoring](authoring.md) covers the

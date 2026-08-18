@@ -3,7 +3,7 @@
 // usage; scenario.ts does the fixture work and lint.ts owns the lint pass.
 //
 //   skillcheck lint [<root>]
-//   skillcheck run <scenario-dir> [--agent MODEL] [--judge MODEL] [--harness claude|codex]
+//   skillcheck run <scenario-dir> [--agent MODEL] [--judge MODEL] [--harness claude|codex|cursor]
 //   skillcheck sweep [--all]
 //   skillcheck summarize [--allow-mixed]
 //
@@ -85,12 +85,12 @@ export function stateDirs(root: string): { results: string; scratch: string; sco
 
 function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
-  if (harness !== "claude" && harness !== "codex")
-    fail(`--harness must be claude or codex, got ${harness}`);
+  if (harness !== "claude" && harness !== "codex" && harness !== "cursor")
+    fail(`--harness must be claude, codex, or cursor, got ${harness}`);
   const agent = flags.get("--agent") as string | undefined;
   return {
     harness: harness as Harness,
-    // claude defaults in scenario.ts; codex undefined = current Codex CLI default
+    // claude defaults in scenario.ts; codex/cursor undefined = that CLI's default
     agentModel: agent,
     judgeModel: (flags.get("--judge") as string | undefined) ?? "claude-opus-5",
     maxTurns: flags.has("--max-turns")
@@ -163,6 +163,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
     scratchDir: dirs.scratch,
     transformPath: path.join(here, `transform${selfExt}`),
+    cursorProviderPath: path.join(here, `cursor-provider${selfExt}`),
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
@@ -260,7 +261,7 @@ function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length !== 1)
     fail(
-      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--harness claude|codex]",
+      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--harness claude|codex|cursor]",
     );
   const o = runScenario(positional[0], runOptions(flags), resolveRoot(flags));
   if (o.score === undefined) {
@@ -352,8 +353,9 @@ export function reduceResults(
     const provider = raw.config?.providers?.[0];
     const judge = raw.config?.defaultTest?.options?.provider;
     const base = f.replace(/\.json$/, "");
-    const harness: Harness = base.endsWith("--codex") ? "codex" : "claude";
-    const [skill, ...rest] = base.replace(/--codex$/, "").split("--");
+    const suffix = base.match(/--(codex|cursor)$/);
+    const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
+    const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
     // Per-result provenance from the run-time sidecar; results predating the
     // sidecar mechanism are "unattested".
     let sha = "unattested";
@@ -372,7 +374,7 @@ export function reduceResults(
       skills_tree_sha: sha,
       score: res.score,
       pass: res.success,
-      agent_model: provider?.config?.model ?? "codex-default",
+      agent_model: provider?.config?.model ?? `${harness}-default`,
       judge_model:
         typeof judge === "string"
           ? judge.replace(/^anthropic:messages:/, "")
