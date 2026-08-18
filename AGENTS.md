@@ -42,15 +42,16 @@ Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test r
 
 `consumer` is the job that packs the tarball, installs it into a throwaway project, and runs `skillcheck lint` from `node_modules/.bin`. `verify` proves the source; only that proves the artifact.
 
-Credentials are in `docs/releasing.md`.
+Credentials are in [docs/releasing.md](docs/releasing.md).
 
 ## Docs map
 
-| Doc                 | When                                 |
-| ------------------- | ------------------------------------ |
-| `README.md`         | install and consumer usage           |
-| `docs/usage.md`     | every subcommand and flag            |
-| `docs/scenarios.md` | writing an eval scenario             |
-| `docs/adoption.md`  | adopting the lint in another repo    |
-| `docs/releasing.md` | the npm pipeline and its credentials |
-| `CONTRIBUTING.md`   | local setup and the verify gate      |
+| Doc                                    | When                                  |
+| -------------------------------------- | ------------------------------------- |
+| [README.md](README.md)                 | install and consumer usage            |
+| [docs/usage.md](docs/usage.md)         | every subcommand and flag             |
+| [docs/scenarios.md](docs/scenarios.md) | writing an eval scenario              |
+| [docs/authoring.md](docs/authoring.md) | writing and auditing the skill itself |
+| [docs/adoption.md](docs/adoption.md)   | adopting the lint in another repo     |
+| [docs/releasing.md](docs/releasing.md) | the npm pipeline and its credentials  |
+| [CONTRIBUTING.md](CONTRIBUTING.md)     | local setup and the verify gate       |
