@@ -133,9 +133,17 @@ export function classifyResult(raw: unknown): Verdict {
   if (res === undefined) return { error: "promptfoo output carried no result" };
 
   const message = typeof res.error === "string" ? res.error.trim() : "";
-  if (message !== "") return { error: message };
-
   const stats = root?.results?.stats;
+  // promptfoo also copies a failed assert-set's threshold reason into the
+  // result's error field while stats still count the test as a graded
+  // failure (failures > 0, errors = 0). That is a judge's verdict, not a
+  // transport error, so the grading evidence wins over the error text.
+  const gradedByStats =
+    stats !== undefined &&
+    (stats.errors ?? 0) === 0 &&
+    ((stats.failures ?? 0) > 0 || (stats.successes ?? 0) > 0);
+  if (message !== "" && !gradedByStats) return { error: message };
+
   if (
     stats !== undefined &&
     (stats.errors ?? 0) > 0 &&

@@ -211,6 +211,25 @@ test("classifyResult: stats-only errors, missing results, and unusable scores", 
   );
 });
 
+test("classifyResult: a graded fail carrying the threshold reason is FAIL, not ERROR", () => {
+  // promptfoo copies a failed assert-set's reason into the result's error
+  // field even though stats record a graded failure. Regression: this used to
+  // classify as ERROR, exit 2, and skip the provenance sidecar.
+  const gradedFail = {
+    results: {
+      results: [{ score: 0.62, success: false, error: "Aggregate score 0.62 < 0.7 threshold" }],
+      stats: { successes: 0, failures: 1, errors: 0 },
+    },
+  };
+  assert.deepEqual(classifyResult(gradedFail), { score: 0.62, pass: false });
+
+  // Without stats to attest the grading, error text still wins.
+  const noStats = {
+    results: { results: [{ score: 0, success: false, error: "provider blew up" }] },
+  };
+  assert.match(classifyResult(noStats).error ?? "", /provider blew up/);
+});
+
 test("classifyResult: graded verdicts still pass through untouched", () => {
   const graded = (score: number, success: boolean) => ({
     results: {
