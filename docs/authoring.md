@@ -46,12 +46,12 @@ Grade each dimension strong, mixed, or weak:
 
 | Dimension              | Question                                                              |
 | ---------------------- | --------------------------------------------------------------------- |
-| discovery              | does metadata alone route a realistic request here                    |
-| workflow               | does the body say how to begin, what evidence to gather, when to stop |
-| progressive disclosure | is detail in the right file                                           |
-| repo fit               | are links, commands, and conventions current                          |
-| verification           | is the strongest mechanical check named, plus a real evidence loop    |
-| boundaries             | are limits and next steps stated without leaning on a sibling skill   |
+| Discovery              | Does metadata alone route a realistic request here                    |
+| Workflow               | Does the body say how to begin, what evidence to gather, when to stop |
+| Progressive disclosure | Is detail in the right file                                           |
+| Repo fit               | Are links, commands, and conventions current                          |
+| Verification           | Is the strongest mechanical check named, plus a real evidence loop    |
+| Boundaries             | Are limits and next steps stated without leaning on a sibling skill   |
 
 Blockers, must-fix: invalid frontmatter; a description that fails discovery;
 stale commands, paths, or links; a workflow with no start, evidence loop, or
