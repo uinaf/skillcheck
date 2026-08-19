@@ -51,13 +51,13 @@ CLI it documents.
 
 | Doc                                                             | When                                  |
 | --------------------------------------------------------------- | ------------------------------------- |
-| [usage](docs/usage.md)                                          | every subcommand, flag, and auth path |
-| [scenarios](docs/scenarios.md)                                  | writing an eval scenario              |
-| [authoring](docs/authoring.md)                                  | writing and auditing the skill itself |
-| [adoption](docs/adoption.md)                                    | wiring the lint into another repo     |
-| [releasing](docs/releasing.md)                                  | the npm pipeline                      |
-| [contributing](CONTRIBUTING.md)                                 | local setup and the verify gate       |
-| [security](https://github.com/uinaf/skillcheck/security/policy) | reporting a vulnerability             |
+| [Usage](docs/usage.md)                                          | Every subcommand, flag, and auth path |
+| [Scenarios](docs/scenarios.md)                                  | Writing an eval scenario              |
+| [Authoring](docs/authoring.md)                                  | Writing and auditing the skill itself |
+| [Adoption](docs/adoption.md)                                    | Wiring the lint into another repo     |
+| [Releasing](docs/releasing.md)                                  | The npm pipeline                      |
+| [Contributing](CONTRIBUTING.md)                                 | Local setup and the verify gate       |
+| [Security](https://github.com/uinaf/skillcheck/security/policy) | Reporting a vulnerability             |
 
 ## License
 

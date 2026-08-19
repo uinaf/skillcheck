@@ -138,13 +138,13 @@ written inside the installed package.
 
 | Variable                                      | Effect                                                            |
 | --------------------------------------------- | ----------------------------------------------------------------- |
-| `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | claude agent and judge go through a gateway                       |
-| none of the above                             | falls back to the local Claude Code session                       |
-| `ANTHROPIC_API_KEY`                           | judge grades over `anthropic:messages:<model>` instead of the SDK |
-| `CODEX_HOME` (default `~/.codex`)             | where the codex harness finds the local `codex` CLI login         |
-| `OPENAI_API_KEY`                              | codex agent auth when there is no local login                     |
-| `CURSOR_API_KEY`                              | cursor agent auth; a logged-in `cursor-agent` also works          |
-| `OPENAI_API_KEY` + `OPENAI_BASE_URL`          | a provider-qualified `--judge openai:…`, optionally via a gateway |
+| `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | The claude agent and judge go through a gateway                   |
+| None of the above                             | Falls back to the local Claude Code session                       |
+| `ANTHROPIC_API_KEY`                           | Judge grades over `anthropic:messages:<model>` instead of the SDK |
+| `CODEX_HOME` (default `~/.codex`)             | Where the codex harness finds the local `codex` CLI login         |
+| `OPENAI_API_KEY`                              | Agent auth for codex when there is no local login                 |
+| `CURSOR_API_KEY`                              | Agent auth for cursor; a logged-in `cursor-agent` also works      |
+| `OPENAI_API_KEY` + `OPENAI_BASE_URL`          | A provider-qualified `--judge openai:…`, optionally via a gateway |
 
 A bare `--judge` model stays on the Anthropic selection regardless of the
 agent harness; a provider-qualified `--judge` uses that provider's env instead.

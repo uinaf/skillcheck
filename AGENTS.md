@@ -35,8 +35,8 @@ Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test r
 | Workflow                        | Trigger                          | Jobs                                                                                    |
 | ------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
 | `.github/workflows/verify.yml`  | PR, merge queue, `workflow_call` | `verify`, `consumer`; the one definition, called by below                               |
-| `.github/workflows/release.yml` | push to `main`                   | (verify + scan) → npm publish (`release` environment)                                   |
-| `.github/workflows/scan.yml`    | PR, weekly                       | caller for the shared scan in `uinaf/.github`: gitleaks, trufflehog, actionlint, zizmor |
+| `.github/workflows/release.yml` | Push to `main`                   | (verify + scan) → npm publish (`release` environment)                                   |
+| `.github/workflows/scan.yml`    | PR, weekly                       | Caller for the shared scan in `uinaf/.github`: gitleaks, trufflehog, actionlint, zizmor |
 
 `verify` and `scan` run in parallel; `release` waits on both. `[skip ci]` is declared once on the two gates, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
 
@@ -48,10 +48,10 @@ Credentials are in [docs/releasing.md](docs/releasing.md).
 
 | Doc                                    | When                                  |
 | -------------------------------------- | ------------------------------------- |
-| [README.md](README.md)                 | install and consumer usage            |
-| [docs/usage.md](docs/usage.md)         | every subcommand and flag             |
-| [docs/scenarios.md](docs/scenarios.md) | writing an eval scenario              |
-| [docs/authoring.md](docs/authoring.md) | writing and auditing the skill itself |
-| [docs/adoption.md](docs/adoption.md)   | adopting the lint in another repo     |
-| [docs/releasing.md](docs/releasing.md) | the npm pipeline and its credentials  |
-| [CONTRIBUTING.md](CONTRIBUTING.md)     | local setup and the verify gate       |
+| [README.md](README.md)                 | Install and consumer usage            |
+| [docs/usage.md](docs/usage.md)         | Every subcommand and flag             |
+| [docs/scenarios.md](docs/scenarios.md) | Writing an eval scenario              |
+| [docs/authoring.md](docs/authoring.md) | Writing and auditing the skill itself |
+| [docs/adoption.md](docs/adoption.md)   | Adopting the lint in another repo     |
+| [docs/releasing.md](docs/releasing.md) | The npm pipeline and its credentials  |
+| [CONTRIBUTING.md](CONTRIBUTING.md)     | Local setup and the verify gate       |
