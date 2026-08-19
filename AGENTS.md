@@ -15,7 +15,7 @@
 - `dist/` is generated and untracked, and `bin` points into it. So `vp pack` runs before `vp test run` in `verify` (otherwise the "invoked through a symlink, `dist/cli.js` still runs" test finds no file and passes without proving anything), and `prepublishOnly` runs `verify`, so nothing publishes an empty `dist/`.
 - `test/fixtures/` is lint input, not source. One tree is deliberately broken. It is excluded from Vitest collection, Oxlint, and Oxfmt; formatting a fixture would change what the lint is asserted to reject.
 - Tags `v0.1.0`–`v0.1.3` are the legacy `github:uinaf/skillcheck#<tag>` install path and must never be deleted or moved. Consumers still pin them, and semantic-release continues its version history from `v0.1.3`.
-- `.github/workflows/release.yml` cannot be renamed or moved, and the `release` environment cannot be renamed. npm Trusted Publishing binds this package's OIDC identity to that exact file path plus that environment name.
+- `.github/workflows/release.yml` cannot be renamed or moved, and the `release` environment cannot be renamed. Trusted Publishing on npm binds this package's OIDC identity to that exact file path plus that environment name.
 
 ## Commands
 

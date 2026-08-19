@@ -1,60 +1,60 @@
-# usage
+# Usage
 
-every subcommand resolves one root, `--root <dir>` or the current directory.
+Every subcommand resolves one root, `--root <dir>` or the current directory.
 `lint` also takes the root as a positional, because that is the shape CI reaches
 for first.
 
-## lint
+## Lint
 
 ```sh
 skillcheck lint            # lints the current repo
 skillcheck lint ../other   # lints another root
 ```
 
-checks each `<root>/skills/<skill>/`:
+Checks each `<root>/skills/<skill>/`:
 
-- frontmatter opens with `---` on line 1 and closes
-- keys are `name`, `description`, `disable-model-invocation` and nothing else,
+- Frontmatter opens with `---` on line 1 and closes
+- Keys are `name`, `description`, `disable-model-invocation` and nothing else,
   each at most once
 - `name` equals the directory name; `description` is non-empty
 - `disable-model-invocation`, when present, is the bare YAML boolean `true`.
-  a quoted `"true"` is an error
-- relative links in the body resolve on disk
+  A quoted `"true"` is an error
+- Relative links in the body resolve on disk
 
-code spans and fenced blocks are stripped before links are checked, so example
-links never fail. external schemes and `#anchors` pass. dot-directories under
+Code spans and fenced blocks are stripped before links are checked, so example
+links never fail. External schemes and `#anchors` pass. Dot-directories under
 `skills/` (`.claude-plugin`) are plugin metadata, not packages, and are skipped.
 
-findings print one per line, relative to the linted root, then a count. exit 0
+Findings print one per line, relative to the linted root, then a count. Exit 0
 clean, 1 with findings.
 
-## run
+## Run
 
 ```sh
 skillcheck run skills/<skill>/evals/<scenario>
 skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex --max-turns 80
 ```
 
-materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
+Materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
 installs the skill under test into that workdir, drives the agent, and grades
-the files it wrote. exit 0 pass, 1 graded fail, 2 error (promptfoo produced no
+the files it wrote. Exit 0 pass, 1 graded fail, 2 error (promptfoo produced no
 usable result).
 
-a test that errored was never graded, so it exits 2, prints the provider's
-message, and writes no provenance sidecar. it is never reported as
+A test that errored was never graded, so it exits 2, prints the provider's
+message, and writes no provenance sidecar. It is never reported as
 `FAIL score=0.0000`; only a real judged verdict can fail a run.
 
-defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
-`--max-turns 50`. on the codex and cursor harnesses, omitting `--agent` leaves
+Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
+`--max-turns 50`. On the codex and cursor harnesses, omitting `--agent` leaves
 the model to that CLI's own default.
 
 `--harness cursor` drives the scenario through the Cursor Agent CLI
 (`cursor-agent` on PATH) with the skill installed under `.cursor/skills/`;
-`--agent` names a Cursor model id, e.g. `composer-2.5`. there is no promptfoo
+`--agent` names a Cursor model id, e.g. `composer-2.5`. There is no promptfoo
 cursor provider, so the run uses this package's own provider module, which
 replays the CLI's `stream-json` output: the `result` event becomes the graded
 output and `SKILL.md` reads under `.cursor/skills/` become the `skill-used`
-evidence. the judge leg is unchanged.
+evidence. The judge leg is unchanged.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed
@@ -64,55 +64,55 @@ through verbatim:
 skillcheck run <scenario-dir> --judge openai:chat:gpt-5.6-sol --judge-effort high
 ```
 
-a provider-qualified judge authenticates through that provider's own env
+A provider-qualified judge authenticates through that provider's own env
 (`OPENAI_API_KEY`, plus `OPENAI_BASE_URL` for a gateway) and is recorded
 verbatim in the scorecard's `judge_model` column. `--judge-effort`
 (minimal|low|medium|high) sets `reasoning_effort` and requires a
 provider-qualified judge; the Anthropic judge does not take one.
 
-## sweep
+## Sweep
 
 ```sh
 skillcheck sweep           # only scenarios without results
 skillcheck sweep --all     # rerun everything
 ```
 
-walks `<root>/skills/*/evals/*` and `<root>/cli/*/skills/*/evals/*`, in sorted
-order, sequentially. a scenario needs both `task.md` and `criteria.json` to be
-discovered. exit 2 if anything errored, 1 if anything failed, else 0.
+Walks `<root>/skills/*/evals/*` and `<root>/cli/*/skills/*/evals/*`, in sorted
+order, sequentially. A scenario needs both `task.md` and `criteria.json` to be
+discovered. Exit 2 if anything errored, 1 if anything failed, else 0.
 
-`EVALS_CONCURRENCY` is passed to promptfoo as `-j` (default 4). it parallelizes
+`EVALS_CONCURRENCY` is passed to promptfoo as `-j` (default 4). It parallelizes
 within one scenario, not across them.
 
-one known failure mode: judge calls through a gateway can drop at the transport
+One known failure mode: judge calls through a gateway can drop at the transport
 layer ([uinaf/agent-platform#28](https://github.com/uinaf/agent-platform/issues/28)).
-that surfaces as an ERROR with no usable result, not as a graded FAIL, and the
+That surfaces as an ERROR with no usable result, not as a graded FAIL, and the
 mitigation is a rerun. `sweep` without `--all` resumes, so a rerun only picks up
 what is missing.
 
-## summarize
+## Summarize
 
 ```sh
 skillcheck summarize [--allow-mixed]
 ```
 
-reduces `<root>/.skillcheck/results/*.json` into
+Reduces `<root>/.skillcheck/results/*.json` into
 `<root>/.skillcheck/scorecards/<UTC-date>.json`: one entry per scenario with
 skill, scenario, harness, tree sha, score, pass, both models, latency, tokens.
 
-if a scorecard for today already exists, the two are merged on
+If a scorecard for today already exists, the two are merged on
 `(skill, scenario, harness)`: entries from this run win, entries it did not
-touch survive, and the merge is reported on stdout. summarizing after rerunning
+touch survive, and the merge is reported on stdout. Summarizing after rerunning
 six of twenty-nine scenarios therefore leaves twenty-nine rows in the file, not
-six. a same-date file that cannot be parsed stops the write instead of being
+six. A same-date file that cannot be parsed stops the write instead of being
 overwritten.
 
-files that are not promptfoo results are skipped with a warning rather than
+Files that are not promptfoo results are skipped with a warning rather than
 failing the reduction.
 
-## provenance
+## Provenance
 
-each successful run writes a `<name>.meta.json` sidecar next to its result:
+Each successful run writes a `<name>.meta.json` sidecar next to its result:
 
 ```json
 {
@@ -125,18 +125,18 @@ each successful run writes a `<name>.meta.json` sidecar next to its result:
 
 `summarize` reads those sidecars and refuses to mix skills-tree revisions in one
 scorecard unless `--allow-mixed`, in which case the top-level `skills_tree_sha`
-becomes `mixed` and per-entry shas remain. a result with no sidecar reduces as
+becomes `mixed` and per-entry shas remain. A result with no sidecar reduces as
 `unattested`.
 
-## state
+## State
 
 `<root>/.skillcheck/` holds `scratch/` and `results/`, both disposable and safe
-to gitignore, and `scorecards/`, which is meant to be committed. nothing is ever
+to gitignore, and `scorecards/`, which is meant to be committed. Nothing is ever
 written inside the installed package.
 
-## auth
+## Auth
 
-| variable                                      | effect                                                            |
+| Variable                                      | Effect                                                            |
 | --------------------------------------------- | ----------------------------------------------------------------- |
 | `ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN` | claude agent and judge go through a gateway                       |
 | none of the above                             | falls back to the local Claude Code session                       |
@@ -146,5 +146,5 @@ written inside the installed package.
 | `CURSOR_API_KEY`                              | cursor agent auth; a logged-in `cursor-agent` also works          |
 | `OPENAI_API_KEY` + `OPENAI_BASE_URL`          | a provider-qualified `--judge openai:…`, optionally via a gateway |
 
-a bare `--judge` model stays on the Anthropic selection regardless of the
+A bare `--judge` model stays on the Anthropic selection regardless of the
 agent harness; a provider-qualified `--judge` uses that provider's env instead.
