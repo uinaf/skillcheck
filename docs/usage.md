@@ -56,6 +56,20 @@ replays the CLI's `stream-json` output: the `result` event becomes the graded
 output and `SKILL.md` reads under `.cursor/skills/` become the `skill-used`
 evidence. the judge leg is unchanged.
 
+`--judge` takes either a bare Claude model (graded through the Anthropic
+selection in [auth](#auth)) or a provider-qualified promptfoo id, passed
+through verbatim:
+
+```sh
+skillcheck run <scenario-dir> --judge openai:chat:gpt-5.6-sol --judge-effort high
+```
+
+a provider-qualified judge authenticates through that provider's own env
+(`OPENAI_API_KEY`, plus `OPENAI_BASE_URL` for a gateway) and is recorded
+verbatim in the scorecard's `judge_model` column. `--judge-effort`
+(minimal|low|medium|high) sets `reasoning_effort` and requires a
+provider-qualified judge; the Anthropic judge does not take one.
+
 ## sweep
 
 ```sh
@@ -130,5 +144,7 @@ written inside the installed package.
 | `CODEX_HOME` (default `~/.codex`)             | where the codex harness finds the local `codex` CLI login         |
 | `OPENAI_API_KEY`                              | codex agent auth when there is no local login                     |
 | `CURSOR_API_KEY`                              | cursor agent auth; a logged-in `cursor-agent` also works          |
+| `OPENAI_API_KEY` + `OPENAI_BASE_URL`          | a provider-qualified `--judge openai:…`, optionally via a gateway |
 
-the judge stays on the Anthropic selection regardless of the agent harness.
+a bare `--judge` model stays on the Anthropic selection regardless of the
+agent harness; a provider-qualified `--judge` uses that provider's env instead.

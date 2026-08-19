@@ -34,7 +34,8 @@ export interface Scenario {
 export interface RunOptions {
   harness: Harness;
   agentModel?: string; // undefined on codex/cursor = let that CLI pick its default
-  judgeModel: string;
+  judgeModel: string; // bare Claude model, or a provider-qualified promptfoo id ("openai:chat:gpt-5.6-sol")
+  judgeEffort?: string; // reasoning_effort for a provider-qualified judge only
   maxTurns?: number; // claude agent leg only; default 50
 }
 
@@ -268,33 +269,41 @@ export function buildConfig(
     providers: [agentProvider(opts, workdir, s.skill, paths)],
     defaultTest: {
       options: {
-        // With ANTHROPIC_API_KEY set, grade over the plain messages API;
-        // otherwise grade through the agent SDK provider with local Claude
-        // Code session auth. The SDK judge needs a forced verdict schema —
-        // the messages judge relies on promptfoo's own rubric JSON prompt.
-        provider: process.env.ANTHROPIC_API_KEY
-          ? `anthropic:messages:${opts.judgeModel}`
-          : {
-              id: "anthropic:claude-agent-sdk",
-              config: {
-                model: opts.judgeModel,
-                apiKeyRequired: false,
-                max_turns: 3,
-                output_format: {
-                  type: "json_schema",
-                  schema: {
-                    type: "object",
-                    additionalProperties: false,
-                    required: ["reason", "pass", "score"],
-                    properties: {
-                      reason: { type: "string" },
-                      pass: { type: "boolean" },
-                      score: { type: "number", minimum: 0, maximum: 1 },
+        // A provider-qualified judge ("openai:chat:gpt-5.6-sol") is handed to
+        // promptfoo verbatim, optionally wrapped to carry reasoning_effort;
+        // its auth is that provider's own env (OPENAI_API_KEY plus a base-URL
+        // override for a gateway). Otherwise the judge is the Anthropic
+        // selection: with ANTHROPIC_API_KEY, the plain messages API;
+        // without it, the agent SDK provider with local Claude Code session
+        // auth. The SDK judge needs a forced verdict schema — the string
+        // judges rely on promptfoo's own rubric JSON prompt.
+        provider: opts.judgeModel.includes(":")
+          ? opts.judgeEffort === undefined
+            ? opts.judgeModel
+            : { id: opts.judgeModel, config: { reasoning_effort: opts.judgeEffort } }
+          : process.env.ANTHROPIC_API_KEY
+            ? `anthropic:messages:${opts.judgeModel}`
+            : {
+                id: "anthropic:claude-agent-sdk",
+                config: {
+                  model: opts.judgeModel,
+                  apiKeyRequired: false,
+                  max_turns: 3,
+                  output_format: {
+                    type: "json_schema",
+                    schema: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["reason", "pass", "score"],
+                      properties: {
+                        reason: { type: "string" },
+                        pass: { type: "boolean" },
+                        score: { type: "number", minimum: 0, maximum: 1 },
+                      },
                     },
                   },
                 },
               },
-            },
         transform: `file://${paths.transformPath}`,
       },
     },
