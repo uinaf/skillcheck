@@ -3,7 +3,7 @@
 // usage; scenario.ts does the fixture work and lint.ts owns the lint pass.
 //
 //   skillcheck lint [<root>]
-//   skillcheck run <scenario-dir> [--agent MODEL] [--judge MODEL] [--harness claude|codex|cursor]
+//   skillcheck run <scenario-dir> [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|cursor]
 //   skillcheck sweep [--all]
 //   skillcheck summarize [--allow-mixed]
 //
@@ -48,7 +48,14 @@ export function parseArgs(argv: string[]): {
 } {
   const positional: string[] = [];
   const flags = new Map<string, string | true>();
-  const takesValue = new Set(["--root", "--agent", "--judge", "--harness", "--max-turns"]);
+  const takesValue = new Set([
+    "--root",
+    "--agent",
+    "--judge",
+    "--judge-effort",
+    "--harness",
+    "--max-turns",
+  ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith("--")) {
@@ -88,11 +95,22 @@ function runOptions(flags: Map<string, string | true>): RunOptions {
   if (harness !== "claude" && harness !== "codex" && harness !== "cursor")
     fail(`--harness must be claude, codex, or cursor, got ${harness}`);
   const agent = flags.get("--agent") as string | undefined;
+  const judgeModel = (flags.get("--judge") as string | undefined) ?? "claude-opus-5";
+  const judgeEffort = flags.get("--judge-effort") as string | undefined;
+  if (judgeEffort !== undefined) {
+    if (!["minimal", "low", "medium", "high"].includes(judgeEffort))
+      fail(`--judge-effort must be minimal, low, medium, or high, got ${judgeEffort}`);
+    if (!judgeModel.includes(":"))
+      fail(
+        "--judge-effort needs a provider-qualified --judge (e.g. openai:chat:gpt-5.6-sol); the Anthropic judge does not take a reasoning effort",
+      );
+  }
   return {
     harness: harness as Harness,
     // claude defaults in scenario.ts; codex/cursor undefined = that CLI's default
     agentModel: agent,
-    judgeModel: (flags.get("--judge") as string | undefined) ?? "claude-opus-5",
+    judgeModel,
+    judgeEffort,
     maxTurns: flags.has("--max-turns")
       ? parseMaxTurns(flags.get("--max-turns") as string)
       : undefined,
@@ -269,7 +287,7 @@ function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length !== 1)
     fail(
-      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--harness claude|codex|cursor]",
+      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|cursor]",
     );
   const o = runScenario(positional[0], runOptions(flags), resolveRoot(flags));
   if (o.score === undefined) {
@@ -383,10 +401,14 @@ export function reduceResults(
       score: res.score,
       pass: res.success,
       agent_model: provider?.config?.model ?? `${harness}-default`,
+      // A provider-qualified judge is recorded verbatim ("openai:chat:…"),
+      // stripped only of the historical anthropic:messages: prefix; the SDK
+      // judge object carries its model in config, a wrapped provider-qualified
+      // one in its id.
       judge_model:
         typeof judge === "string"
           ? judge.replace(/^anthropic:messages:/, "")
-          : (judge?.config?.model ?? "unknown"),
+          : (judge?.config?.model ?? judge?.id ?? "unknown"),
       latency_ms: res.latencyMs,
       tokens: (res.tokenUsage?.total ?? 0) + (res.tokenUsage?.assertions?.total ?? 0),
     });

@@ -91,6 +91,7 @@ function writeResult(
   score: number,
   success: boolean,
   sha?: string,
+  judge: unknown = "anthropic:messages:judge-model",
 ): void {
   const result = {
     results: {
@@ -100,7 +101,7 @@ function writeResult(
     },
     config: {
       providers: [{ config: { model: "agent-model" } }],
-      defaultTest: { options: { provider: "anthropic:messages:judge-model" } },
+      defaultTest: { options: { provider: judge } },
     },
   };
   fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(result));
@@ -114,6 +115,11 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   writeResult(dir, "skillx--scen-a", 0.9, true, "sha1");
   writeResult(dir, "skillx--scen-b--codex", 0.4, false); // no sidecar → unattested... but mixed with sha1
   writeResult(dir, "skillx--scen-c--cursor", 0.8, true, "sha1");
+  writeResult(dir, "skillx--scen-d", 0.9, true, "sha1", "openai:chat:gpt-5.6-sol");
+  writeResult(dir, "skillx--scen-e", 0.9, true, "sha1", {
+    id: "openai:chat:gpt-5.6-sol",
+    config: { reasoning_effort: "high" },
+  });
   fs.writeFileSync(path.join(dir, "broken.json"), "{not json");
   fs.writeFileSync(path.join(dir, "not-a-result.json"), JSON.stringify({ foo: 1 }));
 
@@ -123,7 +129,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const mixed = reduceResults(dir, true);
   assert.equal(mixed.treeSha, "mixed");
   assert.deepEqual(mixed.skipped.sort(), ["broken.json", "not-a-result.json"]);
-  assert.equal(mixed.entries.length, 3);
+  assert.equal(mixed.entries.length, 5);
 
   const a = mixed.entries.find((e) => e.scenario === "scen-a");
   assert.deepEqual(a, {
@@ -144,6 +150,10 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const c = mixed.entries.find((e) => e.scenario === "scen-c");
   assert.equal(c?.harness, "cursor");
   assert.equal(c?.skill, "skillx");
+  const d = mixed.entries.find((x) => x.scenario === "scen-d");
+  assert.equal(d?.judge_model, "openai:chat:gpt-5.6-sol", "provider-qualified judge is verbatim");
+  const e = mixed.entries.find((x) => x.scenario === "scen-e");
+  assert.equal(e?.judge_model, "openai:chat:gpt-5.6-sol", "wrapped judge falls back to its id");
 
   // Uniform shas reduce cleanly without allowMixed
   fs.writeFileSync(
@@ -152,7 +162,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   );
   const uniform = reduceResults(dir, false);
   assert.equal(uniform.treeSha, "sha1");
-  assert.equal(uniform.entries.length, 3);
+  assert.equal(uniform.entries.length, 5);
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -375,6 +385,54 @@ test("generateRun: the cursor harness installs .cursor/skills and a file provide
   assert.ok(Object.keys(manifest).some((k) => k.startsWith(".cursor/skills/demo/")));
 
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("generateRun: a provider-qualified judge passes through, wrapped only for effort", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
+  const paths = {
+    scratchDir: path.join(dir, "scratch"),
+    transformPath: path.join(here, "..", "src", "transform.ts"),
+    cursorProviderPath: path.join(here, "..", "src", "cursor-provider.ts"),
+  };
+  const scenario = path.join(fixtures, "clean", "skills", "demo", "evals", "basic");
+
+  const plain = generateRun(
+    scenario,
+    { harness: "claude", judgeModel: "openai:chat:gpt-5.6-sol" },
+    paths,
+  );
+  const plainConfig = JSON.parse(fs.readFileSync(plain.configPath, "utf8"));
+  assert.equal(plainConfig.defaultTest.options.provider, "openai:chat:gpt-5.6-sol");
+
+  const withEffort = generateRun(
+    scenario,
+    { harness: "claude", judgeModel: "openai:chat:gpt-5.6-sol", judgeEffort: "high" },
+    paths,
+  );
+  const effortConfig = JSON.parse(fs.readFileSync(withEffort.configPath, "utf8"));
+  assert.deepEqual(effortConfig.defaultTest.options.provider, {
+    id: "openai:chat:gpt-5.6-sol",
+    config: { reasoning_effort: "high" },
+  });
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("cli: --judge-effort is validated and needs a provider-qualified judge", () => {
+  const bareJudge = runCli(["run", "some-dir", "--judge-effort", "high"]);
+  assert.equal(bareJudge.rc, 1);
+  assert.match(bareJudge.stderr, /--judge-effort needs a provider-qualified --judge/);
+
+  const badEffort = runCli([
+    "run",
+    "some-dir",
+    "--judge",
+    "openai:chat:gpt-5.6-sol",
+    "--judge-effort",
+    "extreme",
+  ]);
+  assert.equal(badEffort.rc, 1);
+  assert.match(badEffort.stderr, /--judge-effort must be minimal, low, medium, or high/);
 });
 
 test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () => {
