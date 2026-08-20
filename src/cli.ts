@@ -15,7 +15,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintSkills } from "./lint.ts";
-import { generateRun, runNameFor, type Harness, type RunOptions } from "./scenario.ts";
+import {
+  generateRun,
+  requiredEvalPackages,
+  resolvePackageDir,
+  runNameFor,
+  type Harness,
+  type RunOptions,
+} from "./scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(here, "..");
@@ -117,6 +124,44 @@ function runOptions(flags: Map<string, string | true>): RunOptions {
   };
 }
 
+// The eval engine and provider SDKs are optional peers so a lint-only install
+// stays small; run/sweep must therefore degrade with the exact install
+// command, not crash into a resolution error. Exit 2: a missing engine is an
+// environment error, never a graded verdict.
+function ensureEvalPackages(opts: RunOptions): void {
+  const missing = requiredEvalPackages(opts, process.env.ANTHROPIC_API_KEY !== undefined).filter(
+    (pkg) => resolvePackageDir(pkg) === undefined,
+  );
+  if (missing.length === 0) return;
+  const peers: Record<string, string> =
+    JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8")).peerDependencies ??
+    {};
+  const specs = missing.map((pkg) => `"${pkg}@${peers[pkg] ?? "latest"}"`).join(" ");
+  console.error(
+    [
+      `missing eval package(s): ${missing.join(", ")}`,
+      "",
+      "The eval engine is an optional peer so `skillcheck lint` installs stay",
+      "small. Evals are operator-run; install the peers next to @uinaf/skillcheck:",
+      "",
+      `  pnpm add -D ${specs}`,
+    ].join("\n"),
+  );
+  process.exit(2);
+}
+
+// promptfoo's CLI entry inside the resolved peer, run with this same Node.
+// Never `npx promptfoo`: with the engine now an optional peer, npx would fall
+// back to fetching an unpinned promptfoo from the registry when it is absent.
+function promptfooEntry(): string {
+  const dir = resolvePackageDir("promptfoo");
+  if (dir === undefined) throw new Error("promptfoo is not installed"); // ensureEvalPackages ran first
+  const bin: unknown = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).bin;
+  const rel = typeof bin === "string" ? bin : (bin as Record<string, string> | null)?.promptfoo;
+  if (typeof rel !== "string") throw new Error(`promptfoo at ${dir} declares no bin`);
+  return path.join(dir, rel);
+}
+
 interface RunOutcome {
   name: string;
   rc: number;
@@ -198,9 +243,9 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   fs.rmSync(metaPath(resultPath), { force: true });
   const sha = gitHead(root);
   const r = spawnSync(
-    "npx",
+    process.execPath,
     [
-      "promptfoo",
+      promptfooEntry(),
       "eval",
       "--no-cache",
       "--no-progress-bar",
@@ -212,8 +257,9 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
       resultPath,
     ],
     // Failing assertions exit 0 (graded FAIL is read from the result file);
-    // any nonzero rc is therefore a real error. cwd is the installed package so
-    // `npx promptfoo` resolves this package's own dependency.
+    // any nonzero rc is therefore a real error. cwd stays the installed
+    // package so anything promptfoo resolves relative to cwd behaves exactly
+    // as it did when the spawn went through `npx` here.
     {
       cwd: packageDir,
       stdio: "inherit",
@@ -289,7 +335,9 @@ function cmdRun(argv: string[]): void {
     fail(
       "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|cursor]",
     );
-  const o = runScenario(positional[0], runOptions(flags), resolveRoot(flags));
+  const opts = runOptions(flags);
+  ensureEvalPackages(opts);
+  const o = runScenario(positional[0], opts, resolveRoot(flags));
   if (o.score === undefined) {
     console.error(`ERROR ${o.name}: ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
     process.exit(2);
@@ -305,6 +353,7 @@ function cmdSweep(argv: string[]): void {
   if (positional.length > 0) fail("usage: skillcheck sweep [--root DIR] [--all]");
   const root = resolveRoot(flags);
   const opts = runOptions(flags);
+  ensureEvalPackages(opts);
   const all = flags.get("--all") === true;
   const resultsDir = stateDirs(root).results;
   let passed = 0,
