@@ -42,7 +42,17 @@ the registry.
 ## Evals
 
 Sweeps need model credentials, so they stay off consumer CI and run from an
-operator machine or a job that already holds gateway auth:
+operator machine or a job that already holds gateway auth. They also need the
+eval engine, which is an optional peer precisely so the lint-only install
+above stays small — install it next to the package on the operator machine:
+
+```sh
+pnpm add -D promptfoo @anthropic-ai/claude-agent-sdk @openai/codex-sdk
+```
+
+`run` and `sweep` check for the peers the selected harness needs and exit 2
+with that install command when they are missing, so a lint-only install never
+crashes into a resolution error. Then:
 
 ```sh
 skillcheck sweep            # resumes: only scenarios without results

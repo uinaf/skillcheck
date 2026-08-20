@@ -25,7 +25,13 @@ import {
   treeShaOf,
   type ScorecardEntry,
 } from "../src/cli.ts";
-import { generateRun, runNameFor, sdkNodeModulesDir } from "../src/scenario.ts";
+import {
+  generateRun,
+  requiredEvalPackages,
+  resolvePackageDir,
+  runNameFor,
+  sdkNodeModulesDir,
+} from "../src/scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cli = path.join(here, "..", "src", "cli.ts");
@@ -443,6 +449,41 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
   // export maps say — codex-sdk has no resolvable main entry.
   assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk", "package.json")));
   assert.ok(fs.existsSync(path.join(dir, "@openai", "codex-sdk", "package.json")));
+});
+
+test("requiredEvalPackages: per-harness peers, judge leg included", () => {
+  const opts = (harness: "claude" | "codex" | "cursor", judgeModel = "claude-opus-5") => ({
+    harness,
+    judgeModel,
+  });
+  // The claude agent leg always needs the agent SDK.
+  assert.deepEqual(requiredEvalPackages(opts("claude"), true), [
+    "promptfoo",
+    "@anthropic-ai/claude-agent-sdk",
+  ]);
+  // A bare judge with no ANTHROPIC_API_KEY grades through the agent SDK, so
+  // codex and cursor runs still need it — unless the key or a
+  // provider-qualified judge takes the SDK judge path away.
+  assert.deepEqual(requiredEvalPackages(opts("codex"), false), [
+    "promptfoo",
+    "@anthropic-ai/claude-agent-sdk",
+    "@openai/codex-sdk",
+  ]);
+  assert.deepEqual(requiredEvalPackages(opts("codex"), true), ["promptfoo", "@openai/codex-sdk"]);
+  assert.deepEqual(requiredEvalPackages(opts("cursor"), false), [
+    "promptfoo",
+    "@anthropic-ai/claude-agent-sdk",
+  ]);
+  assert.deepEqual(requiredEvalPackages(opts("cursor", "openai:chat:gpt-5.6-sol"), false), [
+    "promptfoo",
+  ]);
+});
+
+test("resolvePackageDir: installed peers resolve, absent packages are undefined", () => {
+  const dir = resolvePackageDir("promptfoo");
+  assert.ok(dir !== undefined);
+  assert.ok(fs.existsSync(path.join(dir, "package.json")));
+  assert.equal(resolvePackageDir("@uinaf/no-such-package-ever"), undefined);
 });
 
 function runCli(args: string[], cwd?: string): { rc: number; stdout: string; stderr: string } {

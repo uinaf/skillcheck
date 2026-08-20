@@ -346,13 +346,41 @@ const SDK_PACKAGES = ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"];
 // package directory in the candidate node_modules dirs is immune to whatever
 // export map a provider ships.
 export function sdkNodeModulesDir(): string | undefined {
-  const require = createRequire(import.meta.url);
   for (const pkg of SDK_PACKAGES) {
-    for (const dir of require.resolve.paths(pkg) ?? []) {
-      if (fs.existsSync(path.join(dir, pkg, "package.json"))) return dir;
-    }
+    const dir = holdingNodeModules(pkg);
+    if (dir !== undefined) return dir;
   }
   return undefined;
+}
+
+function holdingNodeModules(pkg: string): string | undefined {
+  const require = createRequire(import.meta.url);
+  for (const dir of require.resolve.paths(pkg) ?? []) {
+    if (fs.existsSync(path.join(dir, pkg, "package.json"))) return dir;
+  }
+  return undefined;
+}
+
+// An optional peer's install directory, or undefined when the peer is absent.
+// The eval engine and the provider SDKs are optional peerDependencies — a
+// lint-only consumer never installs them — so absence is an answer here, not
+// an exception.
+export function resolvePackageDir(pkg: string): string | undefined {
+  const dir = holdingNodeModules(pkg);
+  return dir === undefined ? undefined : path.join(dir, pkg);
+}
+
+// Which optional peers a run needs: the engine always; the agent SDK for the
+// claude agent leg and for the SDK judge (a bare judge model with no
+// ANTHROPIC_API_KEY grades through the agent SDK, see buildConfig); the codex
+// SDK for the codex agent leg. The cursor harness drives its own CLI and
+// needs no agent-side SDK.
+export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean): string[] {
+  const pkgs = ["promptfoo"];
+  const sdkJudge = !opts.judgeModel.includes(":") && !hasAnthropicKey;
+  if (opts.harness === "claude" || sdkJudge) pkgs.push("@anthropic-ai/claude-agent-sdk");
+  if (opts.harness === "codex") pkgs.push("@openai/codex-sdk");
+  return pkgs;
 }
 
 // Full pipeline: load + materialize + write promptfooconfig.json under the

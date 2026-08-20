@@ -16,9 +16,12 @@ where skills sit and how a scenario is scored.
 pnpm add -D @uinaf/skillcheck
 ```
 
-Node 24 or newer. The package ships compiled ESM and runs no install scripts,
-so a runner using `--ignore-scripts` is fine. Consumers still pinned to the
-pre-npm git tags are covered in [adoption](docs/adoption.md).
+Node 24 or newer. The package ships compiled ESM, runs no install scripts, and
+has no regular dependencies, so a runner using `--ignore-scripts` is fine and
+the lint-only install stays at a handful of packages. The promptfoo eval engine
+and provider SDKs are optional peers, installed only on the operator machine
+that runs evals ([adoption](docs/adoption.md)). Consumers still pinned to the
+pre-npm git tags are covered there too.
 
 ## Use
 
