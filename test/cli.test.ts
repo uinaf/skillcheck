@@ -538,7 +538,7 @@ test("lint: a root with no skills tree lints nothing and passes", () => {
 for (const entry of ["src/cli.ts", "dist/cli.js"]) {
   test(`cli: invoked through a symlink, ${entry} still runs`, () => {
     const target = path.join(here, "..", entry);
-    if (!fs.existsSync(target)) return; // dist is built by `npm run build`
+    assert.equal(fs.existsSync(target), true, `${entry} must exist before the symlink smoke`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-bin-"));
     const link = path.join(dir, "skillcheck");
     fs.symlinkSync(target, link);
