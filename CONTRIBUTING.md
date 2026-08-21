@@ -15,11 +15,14 @@ commit hook is wired with no second setup step.
 
 ```sh
 pnpm run verify
+# force every lane:
+pnpm run verify:full
 ```
 
-That is `vp check` (format, lint, type check), then `vp pack`, then `vp test run`.
-The order matters: `dist/` is generated, and one test only proves anything once
-it exists.
+The repository-owned Vite+ graph caches format, lint, pack, source tests, and
+the consumer contract independently. The order matters: `dist/` is generated,
+and the consumer test installs the packed tarball without scripts or eval peers
+before running its CLI. CI and publishing force the same graph without cache.
 
 Narrower loops while iterating:
 

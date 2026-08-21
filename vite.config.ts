@@ -1,6 +1,71 @@
 import { defineConfig } from "vite-plus";
 
+const stableShell = {
+  env: ["CI", "NODE_ENV"],
+  untrackedEnv: ["INIT_CWD", "SHLVL"],
+};
+
+const graphInputs = [
+  ".node-version",
+  "package.json",
+  "pnpm-lock.yaml",
+  "tsconfig.json",
+  "vite.config.ts",
+];
+
 export default defineConfig({
+  run: {
+    tasks: {
+      format: {
+        ...stableShell,
+        cache: true,
+        command: "vp fmt --check",
+        input: [...graphInputs, ".github/**", "docs/**", "src/**", "test/**", "*.md"],
+      },
+      lint: {
+        ...stableShell,
+        cache: true,
+        command: "vp lint",
+        input: [...graphInputs, "src/**", "test/**/*.ts"],
+      },
+      pack: {
+        ...stableShell,
+        cache: true,
+        command: "vp pack",
+        input: [...graphInputs, "src/**"],
+        output: ["dist/**"],
+      },
+      test: {
+        ...stableShell,
+        cache: true,
+        command: "vp test run test/cli.test.ts test/cursor-provider.test.ts",
+        dependsOn: ["pack"],
+        input: [
+          ...graphInputs,
+          "dist/**",
+          "src/**",
+          "test/cli.test.ts",
+          "test/cursor-provider.test.ts",
+          "test/fixtures/**",
+        ],
+        output: [],
+      },
+      consumer: {
+        ...stableShell,
+        cache: true,
+        command: "vp test run test/consumer.test.ts",
+        dependsOn: ["pack"],
+        input: [...graphInputs, "dist/**", "test/consumer.test.ts", "test/fixtures/clean/**"],
+        output: [],
+      },
+      ready: {
+        cache: false,
+        command: 'node -e ""',
+        dependsOn: ["consumer", "format", "lint", "test"],
+      },
+    },
+  },
+
   test: {
     include: ["test/**/*.test.ts"],
     // The fixture trees are inputs the lint reads from disk, and one of them is
