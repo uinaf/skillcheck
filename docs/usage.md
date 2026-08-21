@@ -87,7 +87,7 @@ discovered. Exit 2 if anything errored, 1 if anything failed, else 0.
 within one scenario, not across them.
 
 One known failure mode: judge calls through a gateway can drop at the transport
-layer ([uinaf/agent-platform#28](https://github.com/uinaf/agent-platform/issues/28)).
+layer ([uinaf/zebroid-infra#44](https://github.com/uinaf/zebroid-infra/issues/44)).
 That surfaces as an ERROR with no usable result, not as a graded FAIL, and the
 mitigation is a rerun. `sweep` without `--all` resumes, so a rerun only picks up
 what is missing.
