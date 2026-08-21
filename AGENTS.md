@@ -13,7 +13,7 @@
 - The package declares zero regular `dependencies`. The eval engine (`promptfoo`) and the provider SDKs are optional `peerDependencies` (plus devDependencies here): promptfoo alone drags ~670 packages — playwright, swc, onnxruntime, sharp — and a lint-only consumer must never pay for it. `run`/`sweep` preflight the peers the selected harness and judge need and exit 2 with the exact install command; promptfoo is spawned from its resolved install path, never through `npx`, which would fetch an unpinned copy from the registry when the peer is absent.
 - `dist/transform.js` must sit beside `dist/cli.js`. `cli.ts` hands promptfoo a `file://` URL built as `path.join(here, "transform" + selfExt)`, so the transform is loaded by path, not imported. That is why `pack.entry` has two entries and `unbundle` is on; the emitted tree stays 1:1 with `src/`.
 - `pack.fixedExtension` is `false` on purpose. The package is `type: module`, so `.js` is already ESM; the default would emit `.mjs` and quietly move the `bin` target out from under the tests and the tarball.
-- `dist/` is generated and untracked, and `bin` points into it. So `vp pack` runs before `vp test run` in `verify` (otherwise the "invoked through a symlink, `dist/cli.js` still runs" test finds no file and passes without proving anything), and `prepublishOnly` runs `verify`, so nothing publishes an empty `dist/`.
+- `dist/` is generated and untracked, and `bin` points into it. So the Vite+ graph runs `pack` before both test lanes (otherwise the "invoked through a symlink, `dist/cli.js` still runs" test finds no file and passes without proving anything), and `prepublishOnly` forces the full graph, so nothing publishes an empty `dist/`.
 - `test/fixtures/` is lint input, not source. One tree is deliberately broken. It is excluded from Vitest collection, Oxlint, and Oxfmt; formatting a fixture would change what the lint is asserted to reject.
 - Tags `v0.1.0`–`v0.1.3` are the legacy `github:uinaf/skillcheck#<tag>` install path and must never be deleted or moved. Consumers still pin them, and semantic-release continues its version history from `v0.1.3`.
 - `.github/workflows/release.yml` cannot be renamed or moved, and the `release` environment cannot be renamed. Trusted Publishing on npm binds this package's OIDC identity to that exact file path plus that environment name.
@@ -22,7 +22,8 @@
 
 ```sh
 pnpm install --frozen-lockfile   # bootstrap: Node from .node-version, pnpm from packageManager
-pnpm run verify                  # the gate CI runs: vp check, vp pack, vp test run
+pnpm run verify                  # cached affected Vite+ graph
+pnpm run verify:full             # uncached gate CI and publishing run
 ```
 
 Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test run`, `pnpm exec vp pack`.
@@ -35,13 +36,13 @@ Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test r
 
 | Workflow                        | Trigger                          | Jobs                                                                                    |
 | ------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------- |
-| `.github/workflows/verify.yml`  | PR, merge queue, `workflow_call` | `verify`, `consumer`; the one definition, called by below                               |
+| `.github/workflows/verify.yml`  | PR, merge queue, `workflow_call` | `verify`; the one definition, called by below                                           |
 | `.github/workflows/release.yml` | Push to `main`                   | (verify + scan) → npm publish (`release` environment)                                   |
 | `.github/workflows/scan.yml`    | PR, weekly                       | Caller for the shared scan in `uinaf/.github`: gitleaks, trufflehog, actionlint, zizmor |
 
 `verify` and `scan` run in parallel; `release` waits on both. `[skip ci]` is declared once on the two gates, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
 
-`consumer` is the job that packs the tarball, installs it into a throwaway project, and runs `skillcheck lint` from `node_modules/.bin`. `verify` proves the source; only that proves the artifact.
+`test/consumer.test.ts` packs the tarball, installs it without scripts or eval peers, and runs `skillcheck lint` from `node_modules/.bin`. The same `verify` graph proves both source and artifact locally; CI forces that graph without cache.
 
 Credentials are in [docs/releasing.md](docs/releasing.md).
 
