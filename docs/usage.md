@@ -37,10 +37,10 @@ skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex --max-
 
 Materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
 installs the skill under test into that workdir, drives the agent, and grades
-the files it wrote. Exit 0 pass, 1 graded fail, 2 error (promptfoo produced no
-usable result, or the optional eval peers are not installed — the message
-carries the exact `pnpm add` command; see
-[adoption](adoption.md#evals)).
+the files it wrote. Exit 0 means pass, 1 means graded fail, and 2 means error.
+Exit 2 covers missing usable promptfoo output or optional eval peers. The
+message carries the exact `pnpm add` command; see
+[adoption](adoption.md#evals).
 
 A test that errored was never graded, so it exits 2, prints the provider's
 message, and writes no provenance sidecar. It is never reported as

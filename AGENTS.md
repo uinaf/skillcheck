@@ -10,7 +10,12 @@
 
 - The layout contract under a root is frozen, not configurable: `<root>/skills/<skill>/SKILL.md`, `<root>/skills/<skill>/evals/<scenario>/`, state in `<root>/.skillcheck/`. Every subcommand resolves exactly one root (`--root`, else the cwd). Adding a config file is how this stops being a contract.
 - The lint half has no dependencies, no network, and no model auth. That is the half consumer CI runs, and it is why `skillcheck lint` works in a repo that installed with `--ignore-scripts`. Anything that gives `lint` a dependency breaks its whole reason to exist.
-- The package declares zero regular `dependencies`. The eval engine (`promptfoo`) and the provider SDKs are optional `peerDependencies` (plus devDependencies here): promptfoo alone drags ~670 packages — playwright, swc, onnxruntime, sharp — and a lint-only consumer must never pay for it. `run`/`sweep` preflight the peers the selected harness and judge need and exit 2 with the exact install command; promptfoo is spawned from its resolved install path, never through `npx`, which would fetch an unpinned copy from the registry when the peer is absent.
+- The package declares zero regular `dependencies`. The eval engine (`promptfoo`) and provider
+  SDKs are optional `peerDependencies`, plus devDependencies here. promptfoo brings about 670
+  packages, including Playwright, SWC, ONNX Runtime, and Sharp. A lint-only consumer must never
+  install them. `run` and `sweep` preflight the peers required by the selected harness and judge,
+  then exit 2 with the exact install command when one is missing. promptfoo runs from its resolved
+  install path. Never use `npx`, which would fetch an unpinned copy from the registry.
 - `dist/transform.js` must sit beside `dist/cli.js`. `cli.ts` hands promptfoo a `file://` URL built as `path.join(here, "transform" + selfExt)`, so the transform is loaded by path, not imported. That is why `pack.entry` has two entries and `unbundle` is on; the emitted tree stays 1:1 with `src/`.
 - `pack.fixedExtension` is `false` on purpose. The package is `type: module`, so `.js` is already ESM; the default would emit `.mjs` and quietly move the `bin` target out from under the tests and the tarball.
 - `dist/` is generated and untracked, and `bin` points into it. So the Vite+ graph runs `pack` before both test lanes (otherwise the "invoked through a symlink, `dist/cli.js` still runs" test finds no file and passes without proving anything), and `prepublishOnly` forces the full graph, so nothing publishes an empty `dist/`.

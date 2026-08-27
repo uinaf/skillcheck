@@ -1,13 +1,5 @@
-// Promptfoo custom provider for the Cursor Agent CLI. Promptfoo ships no
-// cursor provider, so the cursor harness hands the generated config a
-// `file://` reference to this module; like transform.ts, the built copy must
-// land in dist/ beside cli.js so that URL resolves from an installed package.
-//
-// One callApi = one `cursor-agent -p --output-format stream-json` run in the
-// scenario workdir. The stream is the whole contract: the `result` event
-// carries the final text and token usage, and `tool_call` events reading
-// `.cursor/skills/<name>/SKILL.md` are the skill-used evidence promptfoo's
-// assertion reads from `metadata.skillCalls`.
+// promptfoo loads this Cursor Agent provider by file URL. One call is one
+// stream-json run; result and SKILL.md read events are its output contract.
 
 import { spawn } from "node:child_process";
 
@@ -115,8 +107,7 @@ export default class CursorAgentProvider {
 
   async callApi(prompt: string): Promise<ProviderResponse> {
     const command = this.config.command ?? "cursor-agent";
-    // --trust: every workdir is a fresh scratch directory the CLI has never
-    // seen, and the print mode refuses untrusted directories.
+    // Print mode refuses fresh scratch directories unless they are trusted.
     const args = ["-p", "--trust", "--output-format", "stream-json"];
     if (this.config.model !== undefined) args.push("--model", this.config.model);
 
@@ -127,7 +118,7 @@ export default class CursorAgentProvider {
     return new Promise((resolve) => {
       const child = spawn(command, args, {
         cwd: this.config.working_dir,
-        env: process.env, // CURSOR_API_KEY / a logged-in CLI travel through env
+        env: process.env,
         stdio: ["pipe", "pipe", "pipe"],
       });
       const timeoutMs = this.config.timeout_ms ?? 900_000;

@@ -44,7 +44,7 @@ the registry.
 Sweeps need model credentials, so they stay off consumer CI and run from an
 operator machine or a job that already holds gateway auth. They also need the
 eval engine, which is an optional peer precisely so the lint-only install
-above stays small — install it next to the package on the operator machine:
+above stays small. Install it next to the package on the operator machine:
 
 ```sh
 pnpm add -D promptfoo @anthropic-ai/claude-agent-sdk @openai/codex-sdk

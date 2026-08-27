@@ -1,7 +1,3 @@
-// Lint every skill package under a root: frontmatter contract, name/dir
-// agreement, and resolvable relative links. Zero dependencies and no model
-// auth; node 24+ runs it natively.
-
 import fs from "node:fs";
 import path from "node:path";
 
@@ -92,8 +88,6 @@ function lintSkill(dir: string, root: string, errors: string[]): void {
   }
 }
 
-// Pure-ish reducer over a root: reads the tree, returns findings, prints
-// nothing. The layout contract is frozen at <root>/skills/<skill>/.
 export function lintSkills(root: string): LintReport {
   const roots = ["skills", ...fs.globSync("cli/*/skills", { cwd: root })].map((r) =>
     path.join(root, r),

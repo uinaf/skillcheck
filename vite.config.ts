@@ -74,12 +74,8 @@ export default defineConfig({
   },
 
   pack: {
-    // Three entries, not one. `cli.ts` hands promptfoo file URLs built from
-    // its own directory — `path.join(here, "transform" + selfExt)` and the
-    // cursor provider alike — so both modules have to land beside `cli.js` as
-    // real files promptfoo can load by URL. `unbundle` keeps the rest of the
-    // module graph 1:1 with `src/`, which is what the committed `tsc` output
-    // used to be.
+    // promptfoo loads the transform and Cursor provider by file URL. Both must
+    // be real files beside cli.js. `unbundle` keeps the source layout 1:1.
     entry: ["src/cli.ts", "src/transform.ts", "src/cursor-provider.ts"],
     unbundle: true,
     platform: "node",
@@ -87,8 +83,7 @@ export default defineConfig({
     // The package is `type: module`, so `.js` is already ESM. tsdown would
     // otherwise emit `.mjs` and silently move the `bin` target.
     fixedExtension: false,
-    // Nothing imports this package; it is a bin. Declarations would be shipped
-    // weight with no consumer.
+    // This package exposes a binary, not an importable API.
     dts: false,
     sourcemap: false,
   },
@@ -98,8 +93,7 @@ export default defineConfig({
   },
 
   lint: {
-    // `test/fixtures/` is fixture content, not source: a SKILL.md the lint is
-    // supposed to reject is not a file the linter here should have opinions on.
+    // One fixture is deliberately invalid input for skillcheck itself.
     ignorePatterns: ["dist/**", "test/fixtures/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },

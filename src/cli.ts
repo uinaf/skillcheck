@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-// skillcheck — lint and eval harness for agent skills. See README.md for
-// usage; scenario.ts does the fixture work and lint.ts owns the lint pass.
-//
-//   skillcheck lint [<root>]
-//   skillcheck run <scenario-dir> [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|cursor]
-//   skillcheck sweep [--all]
-//   skillcheck summarize [--allow-mixed]
-//
-// Every subcommand resolves a root: --root <dir>, else the current directory.
-// The layout contract under that root is frozen: <root>/skills/<skill>/evals/<scenario>.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -177,7 +167,7 @@ export interface Verdict {
   error?: string;
 }
 
-// A promptfoo test that errored was never graded — it carries an `error` and
+// A promptfoo test that errored was never graded. It carries an `error` and
 // lands in stats.errors with nothing scored. Reporting that as score=0 FAIL
 // would let a transport or resolution failure masquerade as a judge's verdict,
 // so an errored result stays an ERROR and exits 2 per the documented contract.
@@ -256,10 +246,8 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
       "-o",
       resultPath,
     ],
-    // Failing assertions exit 0 (graded FAIL is read from the result file);
-    // any nonzero rc is therefore a real error. cwd stays the installed
-    // package so anything promptfoo resolves relative to cwd behaves exactly
-    // as it did when the spawn went through `npx` here.
+    // Failing assertions exit 0 because graded FAIL comes from the result
+    // file. promptfoo resolves other paths relative to the installed package.
     {
       cwd: packageDir,
       stdio: "inherit",
@@ -431,15 +419,14 @@ export function reduceResults(
     const suffix = base.match(/--(codex|cursor)$/);
     const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
     const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
-    // Per-result provenance from the run-time sidecar; results predating the
-    // sidecar mechanism are "unattested".
+    // Missing provenance sidecars are classified as unattested.
     let sha = "unattested";
     try {
       sha =
         JSON.parse(fs.readFileSync(path.join(dir, `${base}.meta.json`), "utf8")).skills_tree_sha ??
         "unattested";
     } catch {
-      // no sidecar
+      // Missing or malformed sidecars are unattested.
     }
     shas.add(sha);
     entries.push({
@@ -450,10 +437,9 @@ export function reduceResults(
       score: res.score,
       pass: res.success,
       agent_model: provider?.config?.model ?? `${harness}-default`,
-      // A provider-qualified judge is recorded verbatim ("openai:chat:…"),
-      // stripped only of the historical anthropic:messages: prefix; the SDK
-      // judge object carries its model in config, a wrapped provider-qualified
-      // one in its id.
+      // Provider-qualified judge IDs are recorded verbatim. Bare Anthropic IDs
+      // lose their provider prefix; SDK judge objects carry the model in
+      // config, while wrapped providers carry it in id.
       judge_model:
         typeof judge === "string"
           ? judge.replace(/^anthropic:messages:/, "")
@@ -474,7 +460,7 @@ export function reduceResults(
 // One scenario's identity in a scorecard. Rerunning a subset must update those
 // rows and leave every other row alone.
 function entryKey(e: ScorecardEntry): string {
-  return [e.skill, e.scenario, e.harness].join(" ");
+  return [e.skill, e.scenario, e.harness].join("\0");
 }
 
 // A consumer whose results/ holds only today's rerun would otherwise overwrite
@@ -523,7 +509,7 @@ function cmdSummarize(argv: string[]): void {
   if (positional.length > 0) fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
   const dirs = stateDirs(resolveRoot(flags));
   if (!fs.existsSync(dirs.results))
-    fail(`no results directory at ${dirs.results} — run some evals first`);
+    fail(`no results directory at ${dirs.results}; run some evals first`);
   const { entries, skipped } = reduceResults(dirs.results, flags.get("--allow-mixed") === true);
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
@@ -545,8 +531,6 @@ function cmdSummarize(argv: string[]): void {
   }
 }
 
-// lint takes the root as an optional positional too: `skillcheck lint <dir>` is
-// the shape consumer CI reaches for first.
 function cmdLint(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 1) fail("usage: skillcheck lint [<root>] [--root DIR]");
@@ -560,10 +544,8 @@ function cmdLint(argv: string[]): void {
   console.log(`skill lint: ${count} package(s) clean`);
 }
 
-// npm links bins as symlinks — node_modules/.bin/skillcheck points at
-// ../skillcheck/dist/cli.js — so argv[1] and import.meta.url disagree on path
-// for every installed copy. Comparing them raw made the installed CLI a silent
-// no-op that still exited 0. Resolve both through realpath before deciding.
+// npm links bins through node_modules/.bin, so the entrypoint and module URLs
+// must be compared by filesystem identity.
 function isMainModule(): boolean {
   const entry = process.argv[1];
   if (entry === undefined) return false;

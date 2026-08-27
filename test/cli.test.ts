@@ -1,10 +1,3 @@
-// Unit tests for the pure seams — flag parsing, root resolution, run naming,
-// scorecard reduction — plus an end-to-end exercise of `skillcheck lint`
-// against the fixture trees. Run: `vp test run`.
-//
-// Assertions stay on `node:assert/strict`. The runner moved to the Vite+ test
-// surface; the assertions never needed to, and rewriting 26 passing tests into
-// a second assertion dialect would have been churn with no reader upside.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -80,7 +73,10 @@ test("stateDirs: run state hangs off the root, never off the install", () => {
 });
 
 test("toolVersion: reads the installed package version", () => {
-  assert.match(toolVersion(), /^\d+\.\d+\.\d+/);
+  const installed = JSON.parse(
+    fs.readFileSync(path.join(here, "..", "package.json"), "utf8"),
+  ).version;
+  assert.equal(toolVersion(), installed);
 });
 
 test("runNameFor: harness-aware result names", () => {
@@ -129,7 +125,6 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   fs.writeFileSync(path.join(dir, "broken.json"), "{not json");
   fs.writeFileSync(path.join(dir, "not-a-result.json"), JSON.stringify({ foo: 1 }));
 
-  // sha1 + unattested = mixed → throws without allowMixed
   assert.throws(() => reduceResults(dir, false), /multiple skills-tree revisions/);
 
   const mixed = reduceResults(dir, true);
@@ -161,7 +156,6 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const e = mixed.entries.find((x) => x.scenario === "scen-e");
   assert.equal(e?.judge_model, "openai:chat:gpt-5.6-sol", "wrapped judge falls back to its id");
 
-  // Uniform shas reduce cleanly without allowMixed
   fs.writeFileSync(
     path.join(dir, "skillx--scen-b--codex.meta.json"),
     JSON.stringify({ skills_tree_sha: "sha1" }),
@@ -228,9 +222,8 @@ test("classifyResult: stats-only errors, missing results, and unusable scores", 
 });
 
 test("classifyResult: a graded fail carrying the threshold reason is FAIL, not ERROR", () => {
-  // promptfoo copies a failed assert-set's reason into the result's error
-  // field even though stats record a graded failure. Regression: this used to
-  // classify as ERROR, exit 2, and skip the provenance sidecar.
+  // promptfoo puts a failed assert-set's reason in the error field even when
+  // its stats record a graded failure.
   const gradedFail = {
     results: {
       results: [{ score: 0.62, success: false, error: "Aggregate score 0.62 < 0.7 threshold" }],
@@ -445,8 +438,8 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
   const dir = sdkNodeModulesDir();
   assert.ok(dir !== undefined);
   assert.equal(path.basename(dir), "node_modules");
-  // Both providers must be reachable through the one link, whatever their
-  // export maps say — codex-sdk has no resolvable main entry.
+  // Both providers must be reachable through one link. codex-sdk has no
+  // resolvable main entry.
   assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk", "package.json")));
   assert.ok(fs.existsSync(path.join(dir, "@openai", "codex-sdk", "package.json")));
 });
@@ -461,9 +454,7 @@ test("requiredEvalPackages: per-harness peers, judge leg included", () => {
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
   ]);
-  // A bare judge with no ANTHROPIC_API_KEY grades through the agent SDK, so
-  // codex and cursor runs still need it — unless the key or a
-  // provider-qualified judge takes the SDK judge path away.
+  // A bare judge without ANTHROPIC_API_KEY grades through the agent SDK.
   assert.deepEqual(requiredEvalPackages(opts("codex"), false), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
@@ -532,9 +523,7 @@ test("lint: a root with no skills tree lints nothing and passes", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// Regression: npm installs the bin as a symlink into node_modules/.bin, which
-// used to defeat the entrypoint check and turn the whole CLI into a silent
-// exit-0 no-op. Both the source and the built copy must survive that.
+// npm invokes installed bins through node_modules/.bin symlinks.
 for (const entry of ["src/cli.ts", "dist/cli.js"]) {
   test(`cli: invoked through a symlink, ${entry} still runs`, () => {
     const target = path.join(here, "..", entry);

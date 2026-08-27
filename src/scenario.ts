@@ -1,6 +1,3 @@
-// Library: turn one skill-eval scenario (task.md + criteria.json) into a
-// promptfoo run directory. Composed by cli.ts; no CLI surface of its own.
-
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -78,7 +75,6 @@ export function loadScenario(scenarioDir: string): Scenario {
     if (!ok) throw new Error(`invalid checklist item in ${scenarioDir}: ${JSON.stringify(item)}`);
   }
 
-  // Extract embedded input files; replace each block with a pointer to the file on disk.
   const files: Scenario["files"] = [];
   const fileBlock = /^=+ FILE: (.+?) =+\n([\s\S]*?)\n=+ END FILE =+$/gm;
   let prompt = taskMd.replace(fileBlock, (_, name: string, content: string) => {
@@ -107,8 +103,8 @@ export function runNameFor(scenarioDir: string, harness: Harness): string {
   return harness === "claude" ? `${m[1]}--${m[2]}` : `${m[1]}--${m[2]}--${harness}`;
 }
 
-// Frontmatter helpers: the disable-model-invocation contract lives only in the
-// YAML block; body text mentioning the key (docs, examples) must not count.
+// disable-model-invocation is recognized only in YAML frontmatter. Body text
+// may mention the key without changing invocation behavior.
 function frontmatterRange(text: string): [number, number] | null {
   const lines = text.split("\n");
   if (lines[0] !== "---") return null;
@@ -181,7 +177,7 @@ export function materialize(
   }
 
   // Hidden skills (disable-model-invocation) are explicit-invoke-only in
-  // production, which the SDK cannot simulate — so the eval copy drops the
+  // production, which the SDK cannot simulate. The eval copy drops the
   // flag and the caller prepends an explicit invocation to the task. The
   // shipped skill is untouched; the eval measures behavior-when-invoked.
   for (const root of roots) {
@@ -275,8 +271,8 @@ export function buildConfig(
         // override for a gateway). Otherwise the judge is the Anthropic
         // selection: with ANTHROPIC_API_KEY, the plain messages API;
         // without it, the agent SDK provider with local Claude Code session
-        // auth. The SDK judge needs a forced verdict schema — the string
-        // judges rely on promptfoo's own rubric JSON prompt.
+        // auth. The SDK judge needs a forced verdict schema. String judges
+        // rely on promptfoo's own rubric JSON prompt.
         provider: opts.judgeModel.includes(":")
           ? opts.judgeEffort === undefined
             ? opts.judgeModel
@@ -311,10 +307,8 @@ export function buildConfig(
       {
         description: s.criteria.context,
         vars: { task: s.prompt, workdir, manifest: manifestPath },
-        // No test-level threshold: the test passes only if every top-level
-        // assertion passes — the checklist assert-set (weighted score >= its
-        // own threshold) AND the mandatory skill-used routing check, which
-        // stays outside the weighted aggregate.
+        // Both the weighted checklist and the separate skill-used assertion
+        // must pass.
         assert: [
           {
             type: "assert-set",
@@ -332,14 +326,11 @@ export function buildConfig(
   };
 }
 
-// The provider SDKs promptfoo has to load for the agent and judge legs.
 const SDK_PACKAGES = ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"];
 
-// promptfoo resolves a provider's SDK by walking up from the config file, and
-// the scratch dir now lives in the consumer repo, which need not have any
-// node_modules above it. Locate the directory that actually holds skillcheck's
-// own dependencies — wherever the install landed, hoisted or nested — rather
-// than assuming a layout.
+// The scratch directory belongs to the consumer and may have no node_modules
+// ancestor. Find skillcheck's dependency directory without assuming whether
+// the package manager hoisted it.
 // Walks the resolution chain rather than resolving an entry point: @openai/
 // codex-sdk publishes no main "exports", so require.resolve(pkg) throws for it
 // even when the package is installed and importable by subpath. Looking for the
@@ -362,9 +353,8 @@ function holdingNodeModules(pkg: string): string | undefined {
 }
 
 // An optional peer's install directory, or undefined when the peer is absent.
-// The eval engine and the provider SDKs are optional peerDependencies — a
-// lint-only consumer never installs them — so absence is an answer here, not
-// an exception.
+// Lint-only consumers do not install the optional eval peers, so absence is a
+// valid result.
 export function resolvePackageDir(pkg: string): string | undefined {
   const dir = holdingNodeModules(pkg);
   return dir === undefined ? undefined : path.join(dir, pkg);
@@ -383,8 +373,6 @@ export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean)
   return pkgs;
 }
 
-// Full pipeline: load + materialize + write promptfooconfig.json under the
-// caller's scratch dir.
 export function generateRun(
   scenarioDir: string,
   opts: RunOptions,
@@ -395,10 +383,8 @@ export function generateRun(
   const runDir = path.join(paths.scratchDir, name);
   const { workdir, manifestPath } = materialize(s, runDir, opts.harness);
 
-  // Make the provider SDKs resolvable from the config's own directory, or the
-  // run dies in seconds with "The @anthropic-ai/claude-agent-sdk package could
-  // not be resolved". The link sits beside the config and never inside workdir,
-  // so the agent never sees it and the manifest never hashes it.
+  // promptfoo resolves provider SDKs from the generated config directory. The
+  // link stays outside workdir, hidden from the agent and its manifest.
   const sdkDir = sdkNodeModulesDir();
   if (sdkDir !== undefined) {
     const link = path.join(runDir, "node_modules");

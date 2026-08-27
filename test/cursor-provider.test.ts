@@ -1,6 +1,3 @@
-// Unit tests for the cursor provider's stream folding, plus an end-to-end
-// callApi exercise against a stub binary that replays a captured
-// `cursor-agent --output-format stream-json` transcript.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
