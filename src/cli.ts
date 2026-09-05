@@ -219,6 +219,10 @@ function metaPath(resultPath: string): string {
   return resultPath.replace(/\.json$/, ".meta.json");
 }
 
+function attemptPath(resultPath: string): string {
+  return `${resultPath}.attempt`;
+}
+
 function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOutcome {
   const dirs = stateDirs(root);
   const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
@@ -228,6 +232,9 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
+  // Keep attempted identity even when the child produces no output. This is
+  // separate from the result so a no-output failure remains eligible for sweep.
+  fs.writeFileSync(attemptPath(resultPath), "{}\n");
   // Never let a stale result masquerade as this run's outcome.
   fs.rmSync(resultPath, { force: true });
   fs.rmSync(metaPath(resultPath), { force: true });
@@ -284,6 +291,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
         2,
       ) + "\n",
     );
+    fs.rmSync(attemptPath(resultPath), { force: true });
   }
   return outcome;
 }
@@ -405,10 +413,17 @@ export function reduceResults(
   const entries: ScorecardEntry[] = [];
   const skipped: string[] = [];
   const shas = new Set<string>();
-  for (const f of fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"))
-    .sort()) {
+  const files = fs.readdirSync(dir);
+  const incomplete = new Set(
+    files.filter((f) => f.endsWith(".json.attempt")).map((f) => f.replace(/\.attempt$/, "")),
+  );
+  const results = files.filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"));
+  for (const f of [...new Set([...results, ...incomplete])].sort()) {
+    if (incomplete.has(f)) {
+      console.error(`skipping ${f}: attempt did not complete with a graded result`);
+      skipped.push(f);
+      continue;
+    }
     let raw;
     try {
       raw = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));

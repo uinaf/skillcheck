@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
@@ -374,6 +374,99 @@ function seedScorecards(dir: string, original: string): string[] {
   );
   for (const out of paths) fs.writeFileSync(out, original);
   return paths;
+}
+
+for (const mode of ["nonzero-empty", "empty", "malformed", "nonzero-scored"] as const) {
+  test(`run: ${mode} rerun cannot refresh an old scorecard`, () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-run-"));
+    try {
+      fs.cpSync(path.join(fixtures, "clean", "skills"), path.join(root, "skills"), {
+        recursive: true,
+      });
+      fs.renameSync(
+        path.join(root, "skills", "demo", "evals", "basic"),
+        path.join(root, "skills", "demo", "evals", "basic.attempt"),
+      );
+      execFileSync("git", ["init", "--quiet", root]);
+      execFileSync(
+        "git",
+        [
+          "-c",
+          "user.name=Fixture",
+          "-c",
+          "user.email=fixture@example.invalid",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "--quiet",
+          "--allow-empty",
+          "-m",
+          "fixture",
+        ],
+        { cwd: root },
+      );
+      const dirs = stateDirs(root);
+      fs.mkdirSync(dirs.results, { recursive: true });
+      fs.mkdirSync(dirs.scorecards, { recursive: true });
+      const original = JSON.stringify({ scenarios: [entry("demo", "basic.attempt", 0.9)] });
+      const paths = seedScorecards(dirs.scorecards, original);
+      const resultPath = path.join(dirs.results, "demo--basic.attempt.json");
+      const meta = path.join(dirs.results, "demo--basic.attempt.meta.json");
+      writeResult(dirs.results, "demo--basic.attempt", 0.9, true, "sha1");
+      const fake = path.join(root, "fake.mjs");
+      const preload = path.join(root, "preload.mjs");
+      fs.writeFileSync(
+        preload,
+        `import cp from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
+const spawn = cp.spawnSync;
+cp.spawnSync = (command, args, options) => spawn(command, [${JSON.stringify(fake)}, ...args.slice(1)], options);
+syncBuiltinESMExports();
+`,
+      );
+      const setChild = (behavior: string) =>
+        fs.writeFileSync(
+          fake,
+          `import fs from "node:fs";
+const out = process.argv[process.argv.indexOf("-o") + 1];
+const mode = ${JSON.stringify(behavior)};
+if (mode === "malformed") fs.writeFileSync(out, "not JSON");
+if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.stringify({ results: { results: [{ score: 0.95, success: true }] } }));
+process.exit(mode.startsWith("nonzero") ? 1 : 0);
+`,
+        );
+      const invoke = (args: string[]) =>
+        spawnSync(process.execPath, ["--import", preload, cli, ...args, "--root", root], {
+          encoding: "utf8",
+        });
+      setChild(mode);
+      const failed = invoke(["run", path.join(root, "skills", "demo", "evals", "basic.attempt")]);
+      assert.equal(failed.status, 2, failed.stderr);
+      assert.match(failed.stderr, /ERROR demo--basic.attempt/);
+      assert.equal(fs.existsSync(meta), false);
+      const summary = runCli(["summarize", "--root", root]);
+      assert.equal(summary.rc, 1, summary.stdout);
+      assert.match(summary.stderr, /skipped rerun/);
+      for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+      if (mode === "empty" || mode === "nonzero-empty") {
+        assert.equal(fs.existsSync(resultPath), false);
+        const retry = invoke(["sweep"]);
+        assert.equal(retry.status, 2, retry.stderr);
+        assert.match(retry.stdout, /ERROR demo--basic.attempt/);
+        assert.doesNotMatch(retry.stdout, /SKIP/);
+      }
+      setChild("success");
+      const passed = invoke(["run", path.join(root, "skills", "demo", "evals", "basic.attempt")]);
+      assert.equal(passed.status, 0, passed.stderr);
+      assert.equal(fs.existsSync(meta), true);
+      const reduced = reduceResults(dirs.results, false);
+      assert.deepEqual(reduced.skipped, []);
+      assert.equal(reduced.entries[0].score, 0.95);
+      assert.equal(runCli(["summarize", "--root", root]).rc, 0);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 }
 
 for (const harness of ["claude", "codex", "cursor"] as const) {

@@ -114,6 +114,11 @@ with a warning rather than failing the reduction. Graded assertion failures
 remain scored results. If a skipped file matches an existing scorecard row,
 summary generation fails and leaves the scorecard unchanged, so an errored rerun
 cannot carry forward its old score. This also applies with `--allow-mixed`.
+Runs keep a `<name>.json.attempt` marker until a graded result and its provenance
+are written. An outstanding marker makes `summarize` skip that identity even
+when the child produced no result file or left partial output. The marker does
+not count as a result for the sweep's existence check, so no-output failures
+remain eligible for retry.
 
 ## Provenance
 
