@@ -48,10 +48,19 @@ history continues from `v0.1.3`; `v0.1.0`–`v0.1.3` are the legacy git-install
 tags and are never deleted or moved.
 
 During preparation, `@semantic-release/npm` stages the released `package.json`
-version and `@jno21/semantic-release-github-commit` commits it to `main` through
-GitHub's API as the authenticated App. GitHub signs that commit, and the release
-tag points to it. The `[skip ci]` marker on that commit is what stops a release
+version and `scripts/release-commit.ts` commits it through GitHub's signed
+`createCommitOnBranch` API as the authenticated App. The checkout and expected
+branch head are the verified workflow event SHA. GitHub atomically rejects the
+write if `main` has advanced; a successful response is fetched by its immutable
+commit SHA. The plugin checks its parent, unchanged source, and exact prepared
+manifest before semantic-release tags it. Only the package version may change. The `[skip ci]` marker on that commit is what stops a release
 from releasing itself.
+
+If GitHub accepts the commit but fetching or validating it fails, preparation
+stops before tagging or publishing. Inspect that commit's parent, tree, version
+and verified signature, plus existing tags, npm versions and GitHub Releases,
+before recovery. Reconcile only missing publication steps from the validated
+commit; do not create another version or move an existing tag to hide failure.
 
 Check what the next version would be without publishing anything:
 
@@ -61,7 +70,7 @@ pnpm dlx semantic-release --dry-run --no-ci
 
 ## The artifact
 
-`dist/` is generated and untracked. `prepublishOnly` runs `pnpm run verify`,
+`dist/` is generated and untracked. `prepublishOnly` runs `pnpm run verify:full`,
 which builds it, so the tarball is always packed from a tree that just passed
 the gate. `files` is `dist`, `docs`, `README.md`, `LICENSE`.
 
