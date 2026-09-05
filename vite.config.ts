@@ -7,6 +7,7 @@ const stableShell = {
 
 const graphInputs = [
   ".node-version",
+  ".releaserc.json",
   "package.json",
   "pnpm-lock.yaml",
   "tsconfig.json",
@@ -20,13 +21,13 @@ export default defineConfig({
         ...stableShell,
         cache: true,
         command: "vp fmt --check",
-        input: [...graphInputs, ".github/**", "docs/**", "src/**", "test/**", "*.md"],
+        input: [...graphInputs, ".github/**", "docs/**", "scripts/**", "src/**", "test/**", "*.md"],
       },
       lint: {
         ...stableShell,
         cache: true,
         command: "vp lint",
-        input: [...graphInputs, "src/**", "test/**/*.ts"],
+        input: [...graphInputs, "scripts/**", "src/**", "test/**/*.ts"],
       },
       pack: {
         ...stableShell,
@@ -38,12 +39,15 @@ export default defineConfig({
       test: {
         ...stableShell,
         cache: true,
-        command: "vp test run test/cli.test.ts test/cursor-provider.test.ts",
+        command:
+          "vp test run test/cli.test.ts test/cursor-provider.test.ts test/release-commit.test.ts",
         dependsOn: ["pack"],
         input: [
           ...graphInputs,
           "dist/**",
           "src/**",
+          "scripts/**",
+          "test/release-commit.test.ts",
           "test/cli.test.ts",
           "test/cursor-provider.test.ts",
           "test/fixtures/**",
