@@ -183,10 +183,10 @@ export function classifyResult(raw: unknown): Verdict {
   const res = root?.results?.results?.[0] as
     | { error?: unknown; score?: unknown; success?: unknown }
     | undefined;
-  if (res === undefined) return { error: "promptfoo output carried no result" };
+  if (res === undefined || res === null) return { error: "promptfoo output carried no result" };
 
   const message = typeof res.error === "string" ? res.error.trim() : "";
-  const stats = root?.results?.stats;
+  const stats = root?.results?.stats ?? undefined;
   // promptfoo also copies a failed assert-set's threshold reason into the
   // result's error field while stats still count the test as a graded
   // failure (failures > 0, errors = 0). That is a judge's verdict, not a
@@ -219,6 +219,10 @@ function metaPath(resultPath: string): string {
   return resultPath.replace(/\.json$/, ".meta.json");
 }
 
+function attemptPath(resultPath: string): string {
+  return `${resultPath}.attempt`;
+}
+
 function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOutcome {
   const dirs = stateDirs(root);
   const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
@@ -228,6 +232,9 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
+  // Keep attempted identity even when the child produces no output. This is
+  // separate from the result so a no-output failure remains eligible for sweep.
+  fs.writeFileSync(attemptPath(resultPath), "{}\n");
   // Never let a stale result masquerade as this run's outcome.
   fs.rmSync(resultPath, { force: true });
   fs.rmSync(metaPath(resultPath), { force: true });
@@ -284,6 +291,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
         2,
       ) + "\n",
     );
+    fs.rmSync(attemptPath(resultPath), { force: true });
   }
   return outcome;
 }
@@ -387,6 +395,14 @@ export interface ScorecardEntry {
   tokens: number;
 }
 
+function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
+  const base = file.replace(/\.json$/, "");
+  const suffix = base.match(/--(codex|cursor)$/);
+  const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
+  const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
+  return { skill, scenario: rest.join("--"), harness };
+}
+
 // Pure reducer over a results directory. Skips files that are not promptfoo
 // results (warns to stderr, reported in `skipped`); throws on mixed
 // skills-tree revisions unless allowMixed.
@@ -397,10 +413,17 @@ export function reduceResults(
   const entries: ScorecardEntry[] = [];
   const skipped: string[] = [];
   const shas = new Set<string>();
-  for (const f of fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"))
-    .sort()) {
+  const files = fs.readdirSync(dir);
+  const incomplete = new Set(
+    files.filter((f) => f.endsWith(".json.attempt")).map((f) => f.replace(/\.attempt$/, "")),
+  );
+  const results = files.filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"));
+  for (const f of [...new Set([...results, ...incomplete])].sort()) {
+    if (incomplete.has(f)) {
+      console.error(`skipping ${f}: attempt did not complete with a graded result`);
+      skipped.push(f);
+      continue;
+    }
     let raw;
     try {
       raw = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
@@ -408,17 +431,16 @@ export function reduceResults(
       raw = undefined;
     }
     const res = raw?.results?.results?.[0];
-    if (typeof res?.score !== "number" || typeof res?.success !== "boolean") {
-      console.error(`skipping ${f}: not a promptfoo result`);
+    const verdict = classifyResult(raw);
+    if (verdict.score === undefined || verdict.pass === undefined) {
+      console.error(`skipping ${f}: ${verdict.error}`);
       skipped.push(f);
       continue;
     }
     const provider = raw.config?.providers?.[0];
     const judge = raw.config?.defaultTest?.options?.provider;
     const base = f.replace(/\.json$/, "");
-    const suffix = base.match(/--(codex|cursor)$/);
-    const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
-    const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
+    const { skill, scenario, harness } = resultIdentity(f);
     // Missing provenance sidecars are classified as unattested.
     let sha = "unattested";
     try {
@@ -431,11 +453,11 @@ export function reduceResults(
     shas.add(sha);
     entries.push({
       skill,
-      scenario: rest.join("--"),
+      scenario,
       harness,
       skills_tree_sha: sha,
-      score: res.score,
-      pass: res.success,
+      score: verdict.score,
+      pass: verdict.pass,
       agent_model: provider?.config?.model ?? `${harness}-default`,
       // Provider-qualified judge IDs are recorded verbatim. Bare Anthropic IDs
       // lose their provider prefix; SDK judge objects carry the model in
@@ -459,7 +481,7 @@ export function reduceResults(
 
 // One scenario's identity in a scorecard. Rerunning a subset must update those
 // rows and leave every other row alone.
-function entryKey(e: ScorecardEntry): string {
+function entryKey(e: Pick<ScorecardEntry, "skill" | "scenario" | "harness">): string {
   return [e.skill, e.scenario, e.harness].join("\0");
 }
 
@@ -514,10 +536,22 @@ function cmdSummarize(argv: string[]): void {
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const existing = readExistingScorecard(out);
+  const skippedKeys = new Set(skipped.map((file) => entryKey(resultIdentity(file))));
+  if (existing.some((entry) => skippedKeys.has(entryKey(entry)))) {
+    throw new Error(
+      "skipped rerun matches an existing score; refusing to carry it or overwrite the scorecard",
+    );
+  }
   const merged = mergeScorecard(existing, entries);
+  const treeSha = treeShaOf(merged.entries);
+  if (treeSha === "mixed" && flags.get("--allow-mixed") !== true) {
+    throw new Error(
+      "scorecard spans multiple skills-tree revisions; rerun stale ones or pass --allow-mixed",
+    );
+  }
   const scorecard = {
     ran_at: new Date().toISOString(),
-    skills_tree_sha: treeShaOf(merged.entries),
+    skills_tree_sha: treeSha,
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");

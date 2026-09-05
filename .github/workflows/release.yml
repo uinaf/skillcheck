@@ -37,7 +37,8 @@ jobs:
   # that marker, which is what stops a release from releasing itself.
   release:
     needs: [verify, scan]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    # npm provenance rejects self-hosted runners; publish on GitHub-hosted Ubuntu.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment:
       name: release
