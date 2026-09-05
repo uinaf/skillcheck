@@ -1,7 +1,8 @@
 // promptfoo loads this Cursor Agent provider by file URL. One call is one
 // stream-json run; result and SKILL.md read events are its output contract.
 
-import { spawn } from "node:child_process";
+import { fork } from "node:child_process";
+import path from "node:path";
 
 interface CursorProviderConfig {
   working_dir: string;
@@ -116,53 +117,130 @@ export default class CursorAgentProvider {
     let stdoutBuf = "";
 
     return new Promise((resolve) => {
-      const child = spawn(command, args, {
-        cwd: this.config.working_dir,
-        env: process.env,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
       const timeoutMs = this.config.timeout_ms ?? 900_000;
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-        resolve({ error: `cursor-agent timed out after ${timeoutMs}ms` });
-      }, timeoutMs);
-
-      child.on("error", (err) => {
+      const supervisor = fork(
+        new URL(`./cursor-process${path.extname(import.meta.url)}`, import.meta.url),
+        {
+          execArgv: [],
+          detached: process.platform !== "win32",
+          stdio: ["pipe", "pipe", "pipe", "ipc"],
+        },
+      );
+      let failure: string | undefined;
+      let terminal: { code: number | null; signal: string | null } | undefined;
+      let cleanupConfirmed = false;
+      let settled = false;
+      let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (closed: boolean, signal: string | null = null) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
-        resolve({ error: `failed to spawn ${command}: ${err.message}` });
+        clearTimeout(cleanupTimer);
+        supervisor.stdin?.destroy();
+        supervisor.stdout?.destroy();
+        supervisor.stderr?.destroy();
+        if (!closed) {
+          // Only this live ChildProcess handle may be killed from the parent.
+          // A saved process-group ID can name unrelated processes after reaping.
+          supervisor.kill("SIGKILL");
+          supervisor.unref();
+          if (supervisor.connected) supervisor.disconnect();
+        }
+        if (stdoutBuf !== "") foldLine(state, stdoutBuf);
+        const metadata = { skillCalls: state.skillCalls };
+        const fail = (error: string) => resolve({ error, tokenUsage: state.tokenUsage, metadata });
+        if (failure !== undefined) {
+          const tail = stderr.join("").trim().slice(-2000);
+          const missingResult =
+            terminal !== undefined && state.result === undefined ? " without a result event" : "";
+          return fail(`${failure}${missingResult}${tail === "" ? "" : `: ${tail}`}`);
+        }
+        if (
+          !closed ||
+          !cleanupConfirmed ||
+          terminal === undefined ||
+          (process.platform !== "win32" && signal !== "SIGKILL")
+        ) {
+          return fail("cursor-agent supervisor ended without confirmed cleanup");
+        }
+        if (terminal.code !== 0 || terminal.signal !== null || state.result === undefined) {
+          const tail = stderr.join("").trim().slice(-2000);
+          return fail(
+            `cursor-agent exited ${terminal.signal ?? terminal.code ?? "without status"}${state.result === undefined ? " without a result event" : ""}${tail === "" ? "" : `: ${tail}`}`,
+          );
+        }
+        if (state.isError) return fail(state.result || "cursor-agent reported an error result");
+        resolve({ output: state.result, tokenUsage: state.tokenUsage, metadata });
+      };
+      const boundCleanup = () => {
+        cleanupTimer ??= setTimeout(() => {
+          failure =
+            failure === undefined
+              ? "cursor-agent cleanup or pipe draining timed out"
+              : `${failure}; cleanup or pipe draining timed out`;
+          finish(false);
+        }, 2_000);
+      };
+      const stop = (error: string) => {
+        if (settled) return;
+        failure ??= error;
+        boundCleanup();
+        if (supervisor.connected) supervisor.send("stop", () => {});
+      };
+      const timer = setTimeout(
+        () => stop(`cursor-agent timed out after ${timeoutMs}ms`),
+        timeoutMs,
+      );
+      supervisor.on("error", (err) => stop(`cursor-agent supervisor failed: ${err.message}`));
+      supervisor.on("disconnect", () => {
+        if (!cleanupConfirmed && !settled)
+          stop("cursor-agent supervisor disconnected before cleanup");
       });
-      child.stdout.on("data", (chunk: Buffer) => {
+      supervisor.on("message", (message: unknown) => {
+        if (settled) return;
+        if (typeof message !== "object" || message === null) return;
+        if (!("type" in message)) return;
+        if (
+          message.type === "terminal" &&
+          "code" in message &&
+          "signal" in message &&
+          (message.code === null || typeof message.code === "number") &&
+          (message.signal === null || typeof message.signal === "string")
+        ) {
+          terminal = { code: message.code, signal: message.signal };
+          clearTimeout(timer);
+          if (terminal.code !== 0 || terminal.signal !== null) {
+            failure ??= `cursor-agent exited ${terminal.signal ?? terminal.code ?? "without status"}`;
+          }
+          boundCleanup();
+          supervisor.send("cleanup", (err) => {
+            if (err) stop(`cursor-agent cleanup request failed: ${err.message}`);
+          });
+        } else if (
+          message.type === "failure" &&
+          "error" in message &&
+          typeof message.error === "string"
+        ) {
+          stop(message.error);
+        } else if (message.type === "cleanup" && terminal !== undefined) {
+          cleanupConfirmed = true;
+        }
+      });
+      supervisor.stdout?.on("data", (chunk: Buffer) => {
         stdoutBuf += chunk.toString("utf8");
         const lines = stdoutBuf.split("\n");
         stdoutBuf = lines.pop() ?? "";
         for (const line of lines) foldLine(state, line);
       });
-      child.stderr.on("data", (chunk: Buffer) => {
-        stderr.push(chunk.toString("utf8"));
+      supervisor.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk.toString("utf8")));
+      supervisor.stdout?.on("error", (err) => stop(`cursor-agent stdout failed: ${err.message}`));
+      supervisor.stderr?.on("error", (err) => stop(`cursor-agent stderr failed: ${err.message}`));
+      supervisor.stdin?.on("error", (err) => stop(`cursor-agent stdin failed: ${err.message}`));
+      supervisor.on("close", (_code, signal) => finish(true, signal));
+      supervisor.send({ command, args, cwd: this.config.working_dir, timeoutMs }, (err) => {
+        if (err) stop(`cursor-agent supervisor initialization failed: ${err.message}`);
       });
-      child.on("close", (code) => {
-        clearTimeout(timer);
-        if (stdoutBuf !== "") foldLine(state, stdoutBuf);
-        if (state.result === undefined) {
-          const tail = stderr.join("").trim().slice(-2000);
-          resolve({
-            error: `cursor-agent exited ${code ?? "by signal"} without a result event${tail === "" ? "" : `: ${tail}`}`,
-          });
-          return;
-        }
-        if (state.isError) {
-          resolve({ error: state.result || "cursor-agent reported an error result" });
-          return;
-        }
-        resolve({
-          output: state.result,
-          tokenUsage: state.tokenUsage,
-          metadata: { skillCalls: state.skillCalls },
-        });
-      });
-
-      child.stdin.write(prompt);
-      child.stdin.end();
+      supervisor.stdin?.end(prompt);
     });
   }
 }
