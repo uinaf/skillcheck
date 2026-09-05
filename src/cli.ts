@@ -387,6 +387,14 @@ export interface ScorecardEntry {
   tokens: number;
 }
 
+function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
+  const base = file.replace(/\.json$/, "");
+  const suffix = base.match(/--(codex|cursor)$/);
+  const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
+  const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
+  return { skill, scenario: rest.join("--"), harness };
+}
+
 // Pure reducer over a results directory. Skips files that are not promptfoo
 // results (warns to stderr, reported in `skipped`); throws on mixed
 // skills-tree revisions unless allowMixed.
@@ -417,9 +425,7 @@ export function reduceResults(
     const provider = raw.config?.providers?.[0];
     const judge = raw.config?.defaultTest?.options?.provider;
     const base = f.replace(/\.json$/, "");
-    const suffix = base.match(/--(codex|cursor)$/);
-    const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
-    const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
+    const { skill, scenario, harness } = resultIdentity(f);
     // Missing provenance sidecars are classified as unattested.
     let sha = "unattested";
     try {
@@ -432,7 +438,7 @@ export function reduceResults(
     shas.add(sha);
     entries.push({
       skill,
-      scenario: rest.join("--"),
+      scenario,
       harness,
       skills_tree_sha: sha,
       score: verdict.score,
@@ -460,7 +466,7 @@ export function reduceResults(
 
 // One scenario's identity in a scorecard. Rerunning a subset must update those
 // rows and leave every other row alone.
-function entryKey(e: ScorecardEntry): string {
+function entryKey(e: Pick<ScorecardEntry, "skill" | "scenario" | "harness">): string {
   return [e.skill, e.scenario, e.harness].join("\0");
 }
 
@@ -515,6 +521,12 @@ function cmdSummarize(argv: string[]): void {
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const existing = readExistingScorecard(out);
+  const skippedKeys = new Set(skipped.map((file) => entryKey(resultIdentity(file))));
+  if (existing.some((entry) => skippedKeys.has(entryKey(entry)))) {
+    throw new Error(
+      "skipped rerun matches an existing score; refusing to carry it or overwrite the scorecard",
+    );
+  }
   const merged = mergeScorecard(existing, entries);
   const treeSha = treeShaOf(merged.entries);
   if (treeSha === "mixed" && flags.get("--allow-mixed") !== true) {

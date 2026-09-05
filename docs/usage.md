@@ -111,7 +111,9 @@ overwritten.
 
 Files that are not promptfoo results and ungraded transport errors are skipped
 with a warning rather than failing the reduction. Graded assertion failures
-remain scored results.
+remain scored results. If a skipped file matches an existing scorecard row,
+summary generation fails and leaves the scorecard unchanged, so an errored rerun
+cannot carry forward its old score. This also applies with `--allow-mixed`.
 
 ## Provenance
 

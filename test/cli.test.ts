@@ -367,6 +367,48 @@ test("treeShaOf: uniform, mixed, and empty", () => {
   assert.equal(treeShaOf([]), "none");
 });
 
+function seedScorecards(dir: string, original: string): string[] {
+  const now = Date.now();
+  const paths = [now, now + 86_400_000].map((time) =>
+    path.join(dir, `${new Date(time).toISOString().slice(0, 10)}.json`),
+  );
+  for (const out of paths) fs.writeFileSync(out, original);
+  return paths;
+}
+
+for (const harness of ["claude", "codex", "cursor"] as const) {
+  test(`summarize: refuses to carry a skipped ${harness} rerun`, () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
+    try {
+      const dirs = stateDirs(root);
+      fs.mkdirSync(dirs.results, { recursive: true });
+      fs.mkdirSync(dirs.scorecards, { recursive: true });
+      const original = JSON.stringify({
+        ran_at: "2026-01-01T00:00:00.000Z",
+        skills_tree_sha: "sha1",
+        scenarios: [{ ...entry("a", "one", 0.9), harness }, entry("b", "two", 0.8)],
+      });
+      const paths = seedScorecards(dirs.scorecards, original);
+      const suffix = harness === "claude" ? "" : `--${harness}`;
+      fs.writeFileSync(
+        path.join(dirs.results, `a--one${suffix}.json`),
+        JSON.stringify({
+          results: {
+            results: [{ score: 0, success: false, error: "transport failed" }],
+            stats: { successes: 0, failures: 0, errors: 1 },
+          },
+        }),
+      );
+      const result = runCli(["summarize", "--root", root, "--allow-mixed"]);
+      assert.equal(result.rc, 1);
+      assert.match(result.stderr, /skipped rerun.*refusing to carry/);
+      for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
 for (const mode of ["reject", "override", "replace"] as const) {
   test(`summarize: ${mode} retained rows from another revision`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
@@ -374,12 +416,12 @@ for (const mode of ["reject", "override", "replace"] as const) {
       const dirs = stateDirs(root);
       fs.mkdirSync(dirs.results, { recursive: true });
       fs.mkdirSync(dirs.scorecards, { recursive: true });
-      const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
       const original = JSON.stringify({
         skills_tree_sha: "old",
         scenarios: [entry("a", "one", 0.5, "old"), entry("b", "two", 0.9, "old")],
       });
-      fs.writeFileSync(out, original);
+      const paths = seedScorecards(dirs.scorecards, original);
+      fs.writeFileSync(path.join(dirs.results, "unrelated--malformed.json"), "not JSON");
       writeResult(dirs.results, "a--one", 0.95, true, "new");
       if (mode === "replace") writeResult(dirs.results, "b--two", 0.8, true, "new");
       const result = runCli([
@@ -391,9 +433,11 @@ for (const mode of ["reject", "override", "replace"] as const) {
       if (mode === "reject") {
         assert.equal(result.rc, 1);
         assert.match(result.stderr, /multiple skills-tree revisions.*--allow-mixed/);
-        assert.equal(fs.readFileSync(out, "utf8"), original);
+        for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
       } else {
         assert.equal(result.rc, 0, result.stderr);
+        const out = paths.find((file) => fs.readFileSync(file, "utf8") !== original);
+        assert.ok(out, "summarize must replace one dated scorecard");
         const scorecard = JSON.parse(fs.readFileSync(out, "utf8"));
         assert.equal(scorecard.skills_tree_sha, mode === "override" ? "mixed" : "new");
         assert.deepEqual(
