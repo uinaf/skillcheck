@@ -16,7 +16,10 @@
   install them. `run` and `sweep` preflight the peers required by the selected harness and judge,
   then exit 2 with the exact install command when one is missing. promptfoo runs from its resolved
   install path. Never use `npx`, which would fetch an unpinned copy from the registry.
-- `dist/transform.js` must sit beside `dist/cli.js`. `cli.ts` hands promptfoo a `file://` URL built as `path.join(here, "transform" + selfExt)`, so the transform is loaded by path, not imported. That is why `pack.entry` has two entries and `unbundle` is on; the emitted tree stays 1:1 with `src/`.
+- `dist/cursor-process.js` must sit beside `dist/cursor-provider.js`: the Cursor
+  provider forks this supervisor by file URL. Keep its explicit pack entry and
+  the installed-consumer fake-process proof when changing packaging.
+- `dist/transform.js` must sit beside `dist/cli.js`. `cli.ts` hands promptfoo a `file://` URL built as `path.join(here, "transform" + selfExt)`, so the transform is loaded by path, not imported. That is why the transform has an explicit `pack.entry` and `unbundle` is on; the emitted tree stays 1:1 with `src/`.
 - `pack.fixedExtension` is `false` on purpose. The package is `type: module`, so `.js` is already ESM; the default would emit `.mjs` and quietly move the `bin` target out from under the tests and the tarball.
 - `dist/` is generated and untracked, and `bin` points into it. So the Vite+ graph runs `pack` before both test lanes (otherwise the "invoked through a symlink, `dist/cli.js` still runs" test finds no file and passes without proving anything), and `prepublishOnly` forces the full graph, so nothing publishes an empty `dist/`.
 - `test/fixtures/` is lint input, not source. One tree is deliberately broken. It is excluded from Vitest collection, Oxlint, and Oxfmt; formatting a fixture would change what the lint is asserted to reject.

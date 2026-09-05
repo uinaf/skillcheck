@@ -76,7 +76,7 @@ export default defineConfig({
   pack: {
     // promptfoo loads the transform and Cursor provider by file URL. Both must
     // be real files beside cli.js. `unbundle` keeps the source layout 1:1.
-    entry: ["src/cli.ts", "src/transform.ts", "src/cursor-provider.ts"],
+    entry: ["src/cli.ts", "src/transform.ts", "src/cursor-provider.ts", "src/cursor-process.ts"],
     unbundle: true,
     platform: "node",
     format: ["esm"],

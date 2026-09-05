@@ -56,7 +56,13 @@ the model to that CLI's own default.
 cursor provider, so the run uses this package's own provider module, which
 replays the CLI's `stream-json` output: the `result` event becomes the graded
 output and `SKILL.md` reads under `.cursor/skills/` become the `skill-used`
-evidence. The judge leg is unchanged.
+evidence. Grading requires both a successful result event and harness exit code
+zero. On macOS and Linux, a supervisor owns the process group and kills remaining
+helpers when the harness exits, times out, or the provider disconnects. Output
+pipes have a separate two-second cleanup/drain deadline; incomplete cleanup is
+an error. Helpers that detach into another process group are outside this cleanup
+boundary; retained output pipes still cause a bounded error. Windows retains
+only direct-child cleanup. The judge leg is unchanged.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed
