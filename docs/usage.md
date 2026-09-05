@@ -109,8 +109,9 @@ six of twenty-nine scenarios therefore leaves twenty-nine rows in the file, not
 six. A same-date file that cannot be parsed stops the write instead of being
 overwritten.
 
-Files that are not promptfoo results are skipped with a warning rather than
-failing the reduction.
+Files that are not promptfoo results and ungraded transport errors are skipped
+with a warning rather than failing the reduction. Graded assertion failures
+remain scored results.
 
 ## Provenance
 
@@ -126,7 +127,8 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
 ```
 
 `summarize` reads those sidecars and refuses to mix skills-tree revisions in one
-scorecard unless `--allow-mixed`, in which case the top-level `skills_tree_sha`
+scorecard, including retained rows from partial reruns, unless `--allow-mixed`.
+Rejection leaves the existing scorecard unchanged. With the override, the top-level `skills_tree_sha`
 becomes `mixed` and per-entry shas remain. A result with no sidecar reduces as
 `unattested`.
 

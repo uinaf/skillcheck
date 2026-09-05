@@ -167,6 +167,71 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("reduceResults: skips transport errors but retains graded failures", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
+  try {
+    for (const [name, error, stats] of [
+      ["transport", "fixture transport failure", { successes: 0, failures: 0, errors: 1 }],
+      ["stats-only", undefined, { successes: 0, failures: 0, errors: 1 }],
+      ["no-stats", "fixture transport failure", undefined],
+      ["graded", "Aggregate score 0 < 0.7 threshold", { successes: 0, failures: 1, errors: 0 }],
+    ] as const) {
+      fs.writeFileSync(
+        path.join(dir, `demo--${name}.json`),
+        JSON.stringify({
+          results: { results: [{ score: 0, success: false, error }], stats },
+        }),
+      );
+    }
+    const reduced = reduceResults(dir, false);
+    assert.deepEqual(reduced.skipped, [
+      "demo--no-stats.json",
+      "demo--stats-only.json",
+      "demo--transport.json",
+    ]);
+    assert.equal(reduced.treeSha, "unattested");
+    assert.deepEqual(
+      reduced.entries.map(({ scenario, score, pass }) => ({ scenario, score, pass })),
+      [{ scenario: "graded", score: 0, pass: false }],
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("reduceResults: skips malformed result rows and tolerates absent stats", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
+  try {
+    for (const [index, raw] of [
+      null,
+      { results: null },
+      { results: { results: null } },
+      { results: { results: [null] } },
+    ].entries()) {
+      fs.writeFileSync(path.join(dir, `malformed-${index}.json`), JSON.stringify(raw));
+    }
+    fs.writeFileSync(
+      path.join(dir, "demo--graded.json"),
+      JSON.stringify({
+        results: { results: [{ score: 0.9, success: true }], stats: null },
+      }),
+    );
+    const reduced = reduceResults(dir, false);
+    assert.deepEqual(reduced.skipped, [
+      "malformed-0.json",
+      "malformed-1.json",
+      "malformed-2.json",
+      "malformed-3.json",
+    ]);
+    assert.equal(reduced.entries.length, 1);
+    assert.equal(reduced.entries[0].score, 0.9);
+    assert.equal(reduced.entries[0].pass, true);
+    assert.equal(reduced.treeSha, "unattested");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("reduceResults: empty directory", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   const r = reduceResults(dir, false);
@@ -301,6 +366,51 @@ test("treeShaOf: uniform, mixed, and empty", () => {
   assert.equal(treeShaOf([entry("a", "one", 0.5), entry("b", "two", 0.5, "sha2")]), "mixed");
   assert.equal(treeShaOf([]), "none");
 });
+
+for (const mode of ["reject", "override", "replace"] as const) {
+  test(`summarize: ${mode} retained rows from another revision`, () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
+    try {
+      const dirs = stateDirs(root);
+      fs.mkdirSync(dirs.results, { recursive: true });
+      fs.mkdirSync(dirs.scorecards, { recursive: true });
+      const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+      const original = JSON.stringify({
+        skills_tree_sha: "old",
+        scenarios: [entry("a", "one", 0.5, "old"), entry("b", "two", 0.9, "old")],
+      });
+      fs.writeFileSync(out, original);
+      writeResult(dirs.results, "a--one", 0.95, true, "new");
+      if (mode === "replace") writeResult(dirs.results, "b--two", 0.8, true, "new");
+      const result = runCli([
+        "summarize",
+        "--root",
+        root,
+        ...(mode === "override" ? ["--allow-mixed"] : []),
+      ]);
+      if (mode === "reject") {
+        assert.equal(result.rc, 1);
+        assert.match(result.stderr, /multiple skills-tree revisions.*--allow-mixed/);
+        assert.equal(fs.readFileSync(out, "utf8"), original);
+      } else {
+        assert.equal(result.rc, 0, result.stderr);
+        const scorecard = JSON.parse(fs.readFileSync(out, "utf8"));
+        assert.equal(scorecard.skills_tree_sha, mode === "override" ? "mixed" : "new");
+        assert.deepEqual(
+          scorecard.scenarios,
+          [
+            entry("a", "one", 0.95, "new"),
+            entry("b", "two", mode === "override" ? 0.9 : 0.8, mode === "override" ? "old" : "new"),
+          ].map((e, i) =>
+            i === 0 || mode === "replace" ? { ...e, latency_ms: 1200, tokens: 140 } : e,
+          ),
+        );
+      }
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
 
 test("generateRun: the scratch dir can resolve the agent SDK", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));

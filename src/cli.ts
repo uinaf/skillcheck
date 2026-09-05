@@ -183,10 +183,10 @@ export function classifyResult(raw: unknown): Verdict {
   const res = root?.results?.results?.[0] as
     | { error?: unknown; score?: unknown; success?: unknown }
     | undefined;
-  if (res === undefined) return { error: "promptfoo output carried no result" };
+  if (res === undefined || res === null) return { error: "promptfoo output carried no result" };
 
   const message = typeof res.error === "string" ? res.error.trim() : "";
-  const stats = root?.results?.stats;
+  const stats = root?.results?.stats ?? undefined;
   // promptfoo also copies a failed assert-set's threshold reason into the
   // result's error field while stats still count the test as a graded
   // failure (failures > 0, errors = 0). That is a judge's verdict, not a
@@ -408,8 +408,9 @@ export function reduceResults(
       raw = undefined;
     }
     const res = raw?.results?.results?.[0];
-    if (typeof res?.score !== "number" || typeof res?.success !== "boolean") {
-      console.error(`skipping ${f}: not a promptfoo result`);
+    const verdict = classifyResult(raw);
+    if (verdict.score === undefined || verdict.pass === undefined) {
+      console.error(`skipping ${f}: ${verdict.error}`);
       skipped.push(f);
       continue;
     }
@@ -434,8 +435,8 @@ export function reduceResults(
       scenario: rest.join("--"),
       harness,
       skills_tree_sha: sha,
-      score: res.score,
-      pass: res.success,
+      score: verdict.score,
+      pass: verdict.pass,
       agent_model: provider?.config?.model ?? `${harness}-default`,
       // Provider-qualified judge IDs are recorded verbatim. Bare Anthropic IDs
       // lose their provider prefix; SDK judge objects carry the model in
@@ -515,9 +516,15 @@ function cmdSummarize(argv: string[]): void {
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const existing = readExistingScorecard(out);
   const merged = mergeScorecard(existing, entries);
+  const treeSha = treeShaOf(merged.entries);
+  if (treeSha === "mixed" && flags.get("--allow-mixed") !== true) {
+    throw new Error(
+      "scorecard spans multiple skills-tree revisions; rerun stale ones or pass --allow-mixed",
+    );
+  }
   const scorecard = {
     ran_at: new Date().toISOString(),
-    skills_tree_sha: treeShaOf(merged.entries),
+    skills_tree_sha: treeSha,
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
