@@ -36,4 +36,6 @@ jobs:
           cache: true
           run-install: |
             - args: ["--frozen-lockfile"]
+      # setup-vp installs vp, not pnpm; vp forwards this to the bundled pnpm.
+      - run: vp pm audit -- --audit-level high
       - run: vp run --no-cache ready
