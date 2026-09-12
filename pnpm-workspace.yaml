@@ -15,8 +15,14 @@ allowBuilds:
 catalog:
   vite: npm:@voidzero-dev/vite-plus-core@0.2.9
   vite-plus: 0.2.9
+minimumReleaseAgeExclude:
+  - adm-zip@0.6.1
 overrides:
   vite: "catalog:"
+  # onnxruntime-node, via promptfoo > @huggingface/transformers.
+  "adm-zip@<0.6.1": "^0.6.1" # GHSA-xcpc-8h2w-3j85, GHSA-vwc7-r8mq-g2x9
+  # @huggingface/transformers, via promptfoo.
+  "sharp@<0.35.4": "^0.35.4" # GHSA-f88m-g3jw-g9cj, GHSA-rgj7-g3m4-5g8c
 peerDependencyRules:
   allowAny:
     - vite
