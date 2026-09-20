@@ -6,7 +6,7 @@ A push to `main` runs one workflow, `.github/workflows/release.yml`:
 
 ```text
 verify ──┐
-         ├──> release   npm publish, OIDC + uinaf-releaser  (release environment)
+         ├──> release   npm publish, OIDC + uinaf-ci  (release environment)
 scan ────┘
 ```
 
@@ -20,15 +20,15 @@ The file name `release.yml` is load-bearing. See below.
 ## npm
 
 `@uinaf/skillcheck` publishes from `.github/workflows/release.yml` via npm
-Trusted Publishing (OIDC) and the `uinaf-releaser` GitHub App. There is no npm
+Trusted Publishing (OIDC) and the `uinaf-ci` GitHub App. There is no npm
 token in this repository, in its environments, or in the organization.
 
 Required on the `release` GitHub Environment:
 
-| Name                            | Kind   | Purpose                                     |
-| ------------------------------- | ------ | ------------------------------------------- |
-| `UINAF_RELEASE_APP_CLIENT_ID`   | var    | GitHub App client id for the releaser bot   |
-| `UINAF_RELEASE_APP_PRIVATE_KEY` | secret | GitHub App private key for the releaser bot |
+| Name                       | Kind   | Purpose                                     |
+| -------------------------- | ------ | ------------------------------------------- |
+| `UINAF_CI_APP_CLIENT_ID`   | var    | GitHub App client id for the releaser bot   |
+| `UINAF_CI_APP_PRIVATE_KEY` | secret | GitHub App private key for the releaser bot |
 
 The trusted publisher on npmjs.com is registered by **file path**, so
 `.github/workflows/release.yml` cannot be renamed or moved without editing that
