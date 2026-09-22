@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-export type Harness = "claude" | "codex" | "cursor";
+export type Harness = "claude" | "codex";
 
 export interface ChecklistItem {
   name: string;
@@ -30,7 +30,7 @@ export interface Scenario {
 
 export interface RunOptions {
   harness: Harness;
-  agentModel?: string; // undefined on codex/cursor = let that CLI pick its default
+  agentModel?: string; // undefined on codex = let that CLI pick its default
   judgeModel: string; // bare Claude model, or a provider-qualified promptfoo id ("openai:chat:gpt-5.6-sol")
   judgeEffort?: string; // reasoning_effort for a provider-qualified judge only
   maxTurns?: number; // claude agent leg only; default 50
@@ -42,7 +42,6 @@ export interface RunOptions {
 export interface RunPaths {
   scratchDir: string;
   transformPath: string;
-  cursorProviderPath: string;
 }
 
 export function loadScenario(scenarioDir: string): Scenario {
@@ -132,7 +131,7 @@ export function stripHiddenFlag(skillMd: string): string {
 }
 
 // Reserved top-level workdir entries: fixtures may not write agent config roots.
-const RESERVED = new Set([".claude", ".agents", ".cursor"]);
+const RESERVED = new Set([".claude", ".agents"]);
 
 export function materialize(
   s: Scenario,
@@ -165,10 +164,8 @@ export function materialize(
 
   // Install the skill under test, excluding its evals (criteria must not leak
   // into the agent's context). Claude discovers .claude/skills/; codex
-  // discovers .agents/skills/ (install both for codex); cursor discovers
-  // .cursor/skills/.
-  const roots =
-    harness === "codex" ? [".claude", ".agents"] : harness === "cursor" ? [".cursor"] : [".claude"];
+  // discovers .agents/skills/ (install both for codex).
+  const roots = harness === "codex" ? [".claude", ".agents"] : [".claude"];
   for (const root of roots) {
     fs.cpSync(s.skillDir, path.join(workdir, root, "skills", s.skill), {
       recursive: true,
@@ -189,8 +186,7 @@ export function materialize(
 
   // Manifest of pre-existing files so transform.ts can find what the agent
   // wrote. Only .claude/ is excluded (matching transform.ts's walk): .agents/
-  // and .cursor/ files are hashed so the transform sees them as unchanged
-  // inputs.
+  // files are hashed so the transform sees them as unchanged inputs.
   const manifest: Record<string, string> = {};
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -210,18 +206,7 @@ export function materialize(
   return { workdir, manifestPath };
 }
 
-function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: RunPaths): object {
-  if (opts.harness === "cursor") {
-    // No promptfoo cursor provider exists; the config points at this package's
-    // own provider module by file URL, exactly like the transform.
-    return {
-      id: `file://${paths.cursorProviderPath}`,
-      config: {
-        ...(opts.agentModel ? { model: opts.agentModel } : {}), // omitted = current Cursor CLI default
-        working_dir: workdir,
-      },
-    };
-  }
+function agentProvider(opts: RunOptions, workdir: string, skill: string): object {
   if (opts.harness === "codex") {
     return {
       id: "openai:codex-sdk",
@@ -262,7 +247,7 @@ export function buildConfig(
   return {
     description: `${s.skill}/${s.scenario}`,
     prompts: ["{{task}}"],
-    providers: [agentProvider(opts, workdir, s.skill, paths)],
+    providers: [agentProvider(opts, workdir, s.skill)],
     defaultTest: {
       options: {
         // A provider-qualified judge ("openai:chat:gpt-5.6-sol") is handed to
@@ -363,8 +348,7 @@ export function resolvePackageDir(pkg: string): string | undefined {
 // Which optional peers a run needs: the engine always; the agent SDK for the
 // claude agent leg and for the SDK judge (a bare judge model with no
 // ANTHROPIC_API_KEY grades through the agent SDK, see buildConfig); the codex
-// SDK for the codex agent leg. The cursor harness drives its own CLI and
-// needs no agent-side SDK.
+// SDK for the codex agent leg.
 export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean): string[] {
   const pkgs = ["promptfoo"];
   const sdkJudge = !opts.judgeModel.includes(":") && !hasAnthropicKey;

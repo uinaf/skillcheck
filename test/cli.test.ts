@@ -83,7 +83,6 @@ test("runNameFor: harness-aware result names", () => {
   const dir = "/repo/skills/slopspec/evals/single-item-minimality";
   assert.equal(runNameFor(dir, "claude"), "slopspec--single-item-minimality");
   assert.equal(runNameFor(dir, "codex"), "slopspec--single-item-minimality--codex");
-  assert.equal(runNameFor(dir, "cursor"), "slopspec--single-item-minimality--cursor");
   assert.throws(() => runNameFor("/repo/not-a-scenario", "claude"), /not a scenario dir/);
 });
 
@@ -116,7 +115,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   writeResult(dir, "skillx--scen-a", 0.9, true, "sha1");
   writeResult(dir, "skillx--scen-b--codex", 0.4, false); // no sidecar → unattested... but mixed with sha1
-  writeResult(dir, "skillx--scen-c--cursor", 0.8, true, "sha1");
+  writeResult(dir, "skillx--scen-c--codex", 0.8, true, "sha1");
   writeResult(dir, "skillx--scen-d", 0.9, true, "sha1", "openai:chat:gpt-5.6-sol");
   writeResult(dir, "skillx--scen-e", 0.9, true, "sha1", {
     id: "openai:chat:gpt-5.6-sol",
@@ -149,7 +148,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   assert.equal(b?.harness, "codex");
   assert.equal(b?.skills_tree_sha, "unattested");
   const c = mixed.entries.find((e) => e.scenario === "scen-c");
-  assert.equal(c?.harness, "cursor");
+  assert.equal(c?.harness, "codex");
   assert.equal(c?.skill, "skillx");
   const d = mixed.entries.find((x) => x.scenario === "scen-d");
   assert.equal(d?.judge_model, "openai:chat:gpt-5.6-sol", "provider-qualified judge is verbatim");
@@ -252,18 +251,24 @@ test("parseMaxTurns validates values", () => {
 test("run and sweep reject --max-turns for harnesses without a turn limit", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-turn-limit-"));
   try {
-    for (const harness of ["codex", "cursor"]) {
-      for (const command of ["run", "sweep"]) {
-        const args = [command];
-        if (command === "run") args.push("missing-scenario");
-        const result = runCli([...args, "--root", root, "--harness", harness, "--max-turns", "2"]);
-        assert.equal(result.rc, 1, result.stderr);
-        assert.match(result.stderr, /--max-turns is only supported with --harness claude/);
-      }
+    for (const command of ["run", "sweep"]) {
+      const args = [command];
+      if (command === "run") args.push("missing-scenario");
+      const result = runCli([...args, "--root", root, "--harness", "codex", "--max-turns", "2"]);
+      assert.equal(result.rc, 1, result.stderr);
+      assert.match(result.stderr, /--max-turns is only supported with --harness claude/);
     }
     assert.equal(fs.existsSync(path.join(root, ".skillcheck")), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("removed harnesses fail before an eval starts", () => {
+  for (const harness of ["cursor", "opencode"]) {
+    const result = runCli(["run", "missing-scenario", "--harness", harness]);
+    assert.equal(result.rc, 1);
+    assert.match(result.stderr, /--harness must be claude or codex/);
   }
 });
 
@@ -487,7 +492,7 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
   });
 }
 
-for (const harness of ["claude", "codex", "cursor"] as const) {
+for (const harness of ["claude", "codex"] as const) {
   test(`summarize: refuses to carry a skipped ${harness} rerun`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
     try {
@@ -575,7 +580,6 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
     {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
-      cursorProviderPath: path.join(here, "..", "src", "cursor-provider.ts"),
     },
   );
   assert.equal(name, "demo--basic");
@@ -609,54 +613,11 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("generateRun: the cursor harness installs .cursor/skills and a file provider", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
-  const cursorProviderPath = path.join(here, "..", "src", "cursor-provider.ts");
-  const { name, configPath } = generateRun(
-    path.join(fixtures, "clean", "skills", "demo", "evals", "basic"),
-    { harness: "cursor", agentModel: "composer-2.5", judgeModel: "claude-opus-5" },
-    {
-      scratchDir: path.join(dir, "scratch"),
-      transformPath: path.join(here, "..", "src", "transform.ts"),
-      cursorProviderPath,
-    },
-  );
-  assert.equal(name, "demo--basic--cursor");
-
-  const workdir = path.join(path.dirname(configPath), "workdir");
-  // Cursor discovers .cursor/skills; the claude root must not be created.
-  assert.ok(fs.existsSync(path.join(workdir, ".cursor", "skills", "demo", "SKILL.md")));
-  assert.equal(fs.existsSync(path.join(workdir, ".claude")), false);
-  assert.equal(
-    fs.existsSync(path.join(workdir, ".cursor", "skills", "demo", "evals")),
-    false,
-    "criteria must not leak into the agent's context",
-  );
-
-  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  assert.deepEqual(config.providers, [
-    {
-      id: `file://${cursorProviderPath}`,
-      config: { model: "composer-2.5", working_dir: workdir },
-    },
-  ]);
-
-  // The installed skill copy is hashed into the manifest, so the transform
-  // reports it as an unchanged input rather than agent output.
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(path.dirname(configPath), "manifest.json"), "utf8"),
-  );
-  assert.ok(Object.keys(manifest).some((k) => k.startsWith(".cursor/skills/demo/")));
-
-  fs.rmSync(dir, { recursive: true, force: true });
-});
-
 test("generateRun: a provider-qualified judge passes through, wrapped only for effort", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
   const paths = {
     scratchDir: path.join(dir, "scratch"),
     transformPath: path.join(here, "..", "src", "transform.ts"),
-    cursorProviderPath: path.join(here, "..", "src", "cursor-provider.ts"),
   };
   const scenario = path.join(fixtures, "clean", "skills", "demo", "evals", "basic");
 
@@ -710,7 +671,7 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
 });
 
 test("requiredEvalPackages: per-harness peers, judge leg included", () => {
-  const opts = (harness: "claude" | "codex" | "cursor", judgeModel = "claude-opus-5") => ({
+  const opts = (harness: "claude" | "codex", judgeModel = "claude-opus-5") => ({
     harness,
     judgeModel,
   });
@@ -726,13 +687,6 @@ test("requiredEvalPackages: per-harness peers, judge leg included", () => {
     "@openai/codex-sdk",
   ]);
   assert.deepEqual(requiredEvalPackages(opts("codex"), true), ["promptfoo", "@openai/codex-sdk"]);
-  assert.deepEqual(requiredEvalPackages(opts("cursor"), false), [
-    "promptfoo",
-    "@anthropic-ai/claude-agent-sdk",
-  ]);
-  assert.deepEqual(requiredEvalPackages(opts("cursor", "openai:chat:gpt-5.6-sol"), false), [
-    "promptfoo",
-  ]);
 });
 
 test("resolvePackageDir: installed peers resolve, absent packages are undefined", () => {

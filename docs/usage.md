@@ -49,22 +49,8 @@ message, and writes no provenance sidecar. It is never reported as
 
 Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
 and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
-Claude; passing it with `codex` or `cursor` fails before the eval starts. On
-those harnesses, omitting `--agent` leaves the model to that CLI's own default.
-
-`--harness cursor` drives the scenario through the Cursor Agent CLI
-(`cursor-agent` on PATH) with the skill installed under `.cursor/skills/`;
-`--agent` names a Cursor model id, e.g. `composer-2.5`. There is no promptfoo
-cursor provider, so the run uses this package's own provider module, which
-replays the CLI's `stream-json` output: the `result` event becomes the graded
-output and `SKILL.md` reads under `.cursor/skills/` become the `skill-used`
-evidence. Grading requires both a successful result event and harness exit code
-zero. On macOS and Linux, a supervisor owns the process group and kills remaining
-helpers when the harness exits, times out, or the provider disconnects. Output
-pipes have a separate two-second cleanup/drain deadline; incomplete cleanup is
-an error. Helpers that detach into another process group are outside this cleanup
-boundary; retained output pipes still cause a bounded error. Windows retains
-only direct-child cleanup. The judge leg is unchanged.
+Claude; passing it with `codex` fails before the eval starts. On codex,
+omitting `--agent` leaves the model to that CLI's own default.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed
@@ -162,7 +148,6 @@ written inside the installed package.
 | `ANTHROPIC_API_KEY`                           | Judge grades over `anthropic:messages:<model>` instead of the SDK |
 | `CODEX_HOME` (default `~/.codex`)             | Where the codex harness finds the local `codex` CLI login         |
 | `OPENAI_API_KEY`                              | Agent auth for codex when there is no local login                 |
-| `CURSOR_API_KEY`                              | Agent auth for cursor; a logged-in `cursor-agent` also works      |
 | `OPENAI_API_KEY` + `OPENAI_BASE_URL`          | A provider-qualified `--judge openai:…`, optionally via a gateway |
 
 A bare `--judge` model stays on the Anthropic selection regardless of the
