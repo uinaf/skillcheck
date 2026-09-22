@@ -32,7 +32,8 @@ clean, 1 with findings.
 
 ```sh
 skillcheck run skills/<skill>/evals/<scenario>
-skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex --max-turns 80
+skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex
+skillcheck run <scenario-dir> --harness claude --max-turns 80
 ```
 
 Materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
@@ -47,8 +48,9 @@ message, and writes no provenance sidecar. It is never reported as
 `FAIL score=0.0000`; only a real judged verdict can fail a run.
 
 Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
-`--max-turns 50`. On the codex and cursor harnesses, omitting `--agent` leaves
-the model to that CLI's own default.
+and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
+Claude; passing it with `codex` or `cursor` fails before the eval starts. On
+those harnesses, omitting `--agent` leaves the model to that CLI's own default.
 
 `--harness cursor` drives the scenario through the Cursor Agent CLI
 (`cursor-agent` on PATH) with the skill installed under `.cursor/skills/`;

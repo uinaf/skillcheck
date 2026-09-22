@@ -91,6 +91,8 @@ function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
   if (harness !== "claude" && harness !== "codex" && harness !== "cursor")
     fail(`--harness must be claude, codex, or cursor, got ${harness}`);
+  if (flags.has("--max-turns") && harness !== "claude")
+    fail("--max-turns is only supported with --harness claude");
   const agent = flags.get("--agent") as string | undefined;
   const judgeModel = (flags.get("--judge") as string | undefined) ?? "claude-opus-5";
   const judgeEffort = flags.get("--judge-effort") as string | undefined;

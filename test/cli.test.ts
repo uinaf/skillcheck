@@ -249,6 +249,24 @@ test("parseMaxTurns validates values", () => {
   assert.throws(() => parseMaxTurns("2.5"));
 });
 
+test("run and sweep reject --max-turns for harnesses without a turn limit", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-turn-limit-"));
+  try {
+    for (const harness of ["codex", "cursor"]) {
+      for (const command of ["run", "sweep"]) {
+        const args = [command];
+        if (command === "run") args.push("missing-scenario");
+        const result = runCli([...args, "--root", root, "--harness", harness, "--max-turns", "2"]);
+        assert.equal(result.rc, 1, result.stderr);
+        assert.match(result.stderr, /--max-turns is only supported with --harness claude/);
+      }
+    }
+    assert.equal(fs.existsSync(path.join(root, ".skillcheck")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("classifyResult: an errored test is never a scored FAIL", () => {
   // Shape promptfoo writes when the provider blows up: 0 pass / 0 fail / 1 error.
   const errored = {
