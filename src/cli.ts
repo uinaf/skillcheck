@@ -387,7 +387,7 @@ function cmdSweep(argv: string[]): void {
 export interface ScorecardEntry {
   skill: string;
   scenario: string;
-  harness: Harness;
+  harness: Harness | "cursor";
   skills_tree_sha: string;
   score: number;
   pass: boolean;
@@ -399,9 +399,10 @@ export interface ScorecardEntry {
 
 function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
   const base = file.replace(/\.json$/, "");
-  const suffix = base.match(/--(codex|grok)$/);
-  const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
-  const [skill, ...rest] = base.replace(/--(codex|grok)$/, "").split("--");
+  const suffix = base.match(/--(codex|grok|cursor)$/);
+  const harness: ScorecardEntry["harness"] =
+    suffix === null ? "claude" : (suffix[1] as ScorecardEntry["harness"]);
+  const [skill, ...rest] = base.replace(/--(codex|grok|cursor)$/, "").split("--");
   return { skill, scenario: rest.join("--"), harness };
 }
 
@@ -421,6 +422,11 @@ export function reduceResults(
   );
   const results = files.filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"));
   for (const f of [...new Set([...results, ...incomplete])].sort()) {
+    if (f.endsWith("--cursor.json")) {
+      console.error(`skipping ${f}: Cursor harness is retired`);
+      skipped.push(f);
+      continue;
+    }
     if (incomplete.has(f)) {
       console.error(`skipping ${f}: attempt did not complete with a graded result`);
       skipped.push(f);

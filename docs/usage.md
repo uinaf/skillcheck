@@ -116,6 +116,8 @@ with a warning rather than failing the reduction. Graded assertion failures
 remain scored results. If a skipped file matches an existing scorecard row,
 summary generation fails and leaves the scorecard unchanged, so an errored rerun
 cannot carry forward its old score. This also applies with `--allow-mixed`.
+Results from the retired Cursor harness are skipped with their original identity,
+so they cannot become Claude scores or silently carry an old Cursor row.
 Runs keep a `<name>.json.attempt` marker until a graded result and its provenance
 are written. An outstanding marker makes `summarize` skip that identity even
 when the child produced no result file or left partial output. The marker does

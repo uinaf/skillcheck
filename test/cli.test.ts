@@ -167,6 +167,30 @@ test("reduceResults: valid, malformed, and unattested results", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("retired Cursor results cannot become Claude scores or hide a skipped rerun", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-retired-result-"));
+  try {
+    const dirs = stateDirs(root);
+    fs.mkdirSync(dirs.results, { recursive: true });
+    fs.mkdirSync(dirs.scorecards, { recursive: true });
+    writeResult(dirs.results, "skillx--scen--cursor", 0.8, true, "sha1");
+    const reduced = reduceResults(dirs.results, false);
+    assert.deepEqual(reduced.entries, []);
+    assert.deepEqual(reduced.skipped, ["skillx--scen--cursor.json"]);
+
+    const scorecard = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    fs.writeFileSync(
+      scorecard,
+      JSON.stringify({ scenarios: [{ ...entry("skillx", "scen", 0.8), harness: "cursor" }] }),
+    );
+    const summarized = runCli(["summarize", "--root", root]);
+    assert.equal(summarized.rc, 1);
+    assert.match(summarized.stderr, /skipped rerun.*refusing to carry/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("reduceResults: skips transport errors but retains graded failures", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   try {
