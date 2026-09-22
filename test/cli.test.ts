@@ -83,6 +83,7 @@ test("runNameFor: harness-aware result names", () => {
   const dir = "/repo/skills/slopspec/evals/single-item-minimality";
   assert.equal(runNameFor(dir, "claude"), "slopspec--single-item-minimality");
   assert.equal(runNameFor(dir, "codex"), "slopspec--single-item-minimality--codex");
+  assert.equal(runNameFor(dir, "grok"), "slopspec--single-item-minimality--grok");
   assert.throws(() => runNameFor("/repo/not-a-scenario", "claude"), /not a scenario dir/);
 });
 
@@ -268,7 +269,7 @@ test("removed harnesses fail before an eval starts", () => {
   for (const harness of ["cursor", "opencode"]) {
     const result = runCli(["run", "missing-scenario", "--harness", harness]);
     assert.equal(result.rc, 1);
-    assert.match(result.stderr, /--harness must be claude or codex/);
+    assert.match(result.stderr, /--harness must be claude, codex, or grok/);
   }
 });
 
@@ -492,7 +493,7 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
   });
 }
 
-for (const harness of ["claude", "codex"] as const) {
+for (const harness of ["claude", "codex", "grok"] as const) {
   test(`summarize: refuses to carry a skipped ${harness} rerun`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
     try {
@@ -580,6 +581,7 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
     {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
+      grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
     },
   );
   assert.equal(name, "demo--basic");
@@ -613,11 +615,42 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test("generateRun: Grok installs the skill and uses its CLI provider", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-grok-"));
+  try {
+    const grokProviderPath = path.join(here, "..", "src", "grok-provider.ts");
+    const { name, configPath } = generateRun(
+      path.join(fixtures, "clean", "skills", "demo", "evals", "basic"),
+      { harness: "grok", judgeModel: "claude-opus-5" },
+      {
+        scratchDir: path.join(dir, "scratch"),
+        transformPath: path.join(here, "..", "src", "transform.ts"),
+        grokProviderPath,
+      },
+    );
+    assert.equal(name, "demo--basic--grok");
+    const workdir = path.join(path.dirname(configPath), "workdir");
+    assert.ok(fs.existsSync(path.join(workdir, ".grok", "skills", "demo", "SKILL.md")));
+    assert.equal(fs.existsSync(path.join(workdir, ".grok", "skills", "demo", "evals")), false);
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    assert.deepEqual(config.providers, [
+      {
+        id: `file://${grokProviderPath}`,
+        config: { working_dir: workdir, skill: "demo" },
+      },
+    ]);
+    assert.deepEqual(config.tests[0].assert[1], { type: "skill-used", value: "demo" });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("generateRun: a provider-qualified judge passes through, wrapped only for effort", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
   const paths = {
     scratchDir: path.join(dir, "scratch"),
     transformPath: path.join(here, "..", "src", "transform.ts"),
+    grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
   };
   const scenario = path.join(fixtures, "clean", "skills", "demo", "evals", "basic");
 
@@ -671,7 +704,7 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
 });
 
 test("requiredEvalPackages: per-harness peers, judge leg included", () => {
-  const opts = (harness: "claude" | "codex", judgeModel = "claude-opus-5") => ({
+  const opts = (harness: "claude" | "codex" | "grok", judgeModel = "claude-opus-5") => ({
     harness,
     judgeModel,
   });
@@ -687,6 +720,7 @@ test("requiredEvalPackages: per-harness peers, judge leg included", () => {
     "@openai/codex-sdk",
   ]);
   assert.deepEqual(requiredEvalPackages(opts("codex"), true), ["promptfoo", "@openai/codex-sdk"]);
+  assert.deepEqual(requiredEvalPackages(opts("grok"), true), ["promptfoo"]);
 });
 
 test("resolvePackageDir: installed peers resolve, absent packages are undefined", () => {

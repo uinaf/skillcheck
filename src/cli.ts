@@ -89,8 +89,8 @@ export function stateDirs(root: string): { results: string; scratch: string; sco
 
 function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
-  if (harness !== "claude" && harness !== "codex")
-    fail(`--harness must be claude or codex, got ${harness}`);
+  if (harness !== "claude" && harness !== "codex" && harness !== "grok")
+    fail(`--harness must be claude, codex, or grok, got ${harness}`);
   if (flags.has("--max-turns") && harness !== "claude")
     fail("--max-turns is only supported with --harness claude");
   const agent = flags.get("--agent") as string | undefined;
@@ -106,7 +106,7 @@ function runOptions(flags: Map<string, string | true>): RunOptions {
   }
   return {
     harness: harness as Harness,
-    // claude defaults in scenario.ts; codex undefined = that CLI's default
+    // claude defaults in scenario.ts; codex/grok undefined = that CLI's default
     agentModel: agent,
     judgeModel,
     judgeEffort,
@@ -230,6 +230,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
     scratchDir: dirs.scratch,
     transformPath: path.join(here, `transform${selfExt}`),
+    grokProviderPath: path.join(here, `grok-provider${selfExt}`),
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
@@ -330,7 +331,7 @@ function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length !== 1)
     fail(
-      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex]",
+      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|grok]",
     );
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
@@ -398,9 +399,9 @@ export interface ScorecardEntry {
 
 function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
   const base = file.replace(/\.json$/, "");
-  const suffix = base.match(/--(codex)$/);
+  const suffix = base.match(/--(codex|grok)$/);
   const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
-  const [skill, ...rest] = base.replace(/--codex$/, "").split("--");
+  const [skill, ...rest] = base.replace(/--(codex|grok)$/, "").split("--");
   return { skill, scenario: rest.join("--"), harness };
 }
 

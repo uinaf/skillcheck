@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-export type Harness = "claude" | "codex";
+export type Harness = "claude" | "codex" | "grok";
 
 export interface ChecklistItem {
   name: string;
@@ -30,7 +30,7 @@ export interface Scenario {
 
 export interface RunOptions {
   harness: Harness;
-  agentModel?: string; // undefined on codex = let that CLI pick its default
+  agentModel?: string; // undefined on codex/grok = let that CLI pick its default
   judgeModel: string; // bare Claude model, or a provider-qualified promptfoo id ("openai:chat:gpt-5.6-sol")
   judgeEffort?: string; // reasoning_effort for a provider-qualified judge only
   maxTurns?: number; // claude agent leg only; default 50
@@ -42,6 +42,7 @@ export interface RunOptions {
 export interface RunPaths {
   scratchDir: string;
   transformPath: string;
+  grokProviderPath: string;
 }
 
 export function loadScenario(scenarioDir: string): Scenario {
@@ -131,7 +132,7 @@ export function stripHiddenFlag(skillMd: string): string {
 }
 
 // Reserved top-level workdir entries: fixtures may not write agent config roots.
-const RESERVED = new Set([".claude", ".agents"]);
+const RESERVED = new Set([".claude", ".agents", ".grok", "node_modules"]);
 
 export function materialize(
   s: Scenario,
@@ -164,8 +165,9 @@ export function materialize(
 
   // Install the skill under test, excluding its evals (criteria must not leak
   // into the agent's context). Claude discovers .claude/skills/; codex
-  // discovers .agents/skills/ (install both for codex).
-  const roots = harness === "codex" ? [".claude", ".agents"] : [".claude"];
+  // discovers .agents/skills/ (install both for codex); Grok uses .grok/skills/.
+  const roots =
+    harness === "codex" ? [".claude", ".agents"] : harness === "grok" ? [".grok"] : [".claude"];
   for (const root of roots) {
     fs.cpSync(s.skillDir, path.join(workdir, root, "skills", s.skill), {
       recursive: true,
@@ -185,14 +187,14 @@ export function materialize(
   }
 
   // Manifest of pre-existing files so transform.ts can find what the agent
-  // wrote. Only .claude/ is excluded (matching transform.ts's walk): .agents/
-  // files are hashed so the transform sees them as unchanged inputs.
+  // wrote. Claude and Grok config roots and installed dependencies are excluded
+  // (matching transform.ts's walk); Codex's .agents/ files are hashed as inputs.
   const manifest: Record<string, string> = {};
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (e.name !== ".claude") walk(p);
+        if (e.name !== ".claude" && e.name !== ".grok" && e.name !== "node_modules") walk(p);
       } else {
         manifest[path.relative(workdir, p)] = createHash("sha256")
           .update(fs.readFileSync(p))
@@ -206,7 +208,17 @@ export function materialize(
   return { workdir, manifestPath };
 }
 
-function agentProvider(opts: RunOptions, workdir: string, skill: string): object {
+function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: RunPaths): object {
+  if (opts.harness === "grok") {
+    return {
+      id: `file://${paths.grokProviderPath}`,
+      config: {
+        working_dir: workdir,
+        skill,
+        ...(opts.agentModel ? { model: opts.agentModel } : {}),
+      },
+    };
+  }
   if (opts.harness === "codex") {
     return {
       id: "openai:codex-sdk",
@@ -247,7 +259,7 @@ export function buildConfig(
   return {
     description: `${s.skill}/${s.scenario}`,
     prompts: ["{{task}}"],
-    providers: [agentProvider(opts, workdir, s.skill)],
+    providers: [agentProvider(opts, workdir, s.skill, paths)],
     defaultTest: {
       options: {
         // A provider-qualified judge ("openai:chat:gpt-5.6-sol") is handed to

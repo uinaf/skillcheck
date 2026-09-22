@@ -34,6 +34,7 @@ clean, 1 with findings.
 skillcheck run skills/<skill>/evals/<scenario>
 skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex
 skillcheck run <scenario-dir> --harness claude --max-turns 80
+skillcheck run <scenario-dir> --harness grok
 ```
 
 Materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
@@ -49,8 +50,15 @@ message, and writes no provenance sidecar. It is never reported as
 
 Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
 and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
-Claude; passing it with `codex` fails before the eval starts. On codex,
-omitting `--agent` leaves the model to that CLI's own default.
+Claude; passing it with `codex` or `grok` fails before the eval starts. On
+those harnesses, omitting `--agent` leaves the model to that CLI's own default.
+
+`--harness grok` runs the locally installed Grok Build CLI in the disposable
+workdir with the skill under `.grok/skills/`. It uses native streaming events
+to count a completed read of that skill's `SKILL.md` as `skill-used` evidence.
+Grok must be logged in locally or have its supported credentials configured.
+The run disables web search and subagents and grants edit permission in the
+workdir. `--agent` selects a Grok model ID.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed

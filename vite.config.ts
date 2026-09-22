@@ -39,7 +39,8 @@ export default defineConfig({
       test: {
         ...stableShell,
         cache: true,
-        command: "vp test run test/cli.test.ts test/release-commit.test.ts",
+        command:
+          "vp test run test/cli.test.ts test/grok-provider.test.ts test/release-commit.test.ts test/transform.test.ts",
         dependsOn: ["pack"],
         input: [
           ...graphInputs,
@@ -48,6 +49,8 @@ export default defineConfig({
           "scripts/**",
           "test/release-commit.test.ts",
           "test/cli.test.ts",
+          "test/grok-provider.test.ts",
+          "test/transform.test.ts",
           "test/fixtures/**",
         ],
         output: [],
@@ -74,7 +77,7 @@ export default defineConfig({
   },
 
   pack: {
-    entry: ["src/cli.ts", "src/transform.ts"],
+    entry: ["src/cli.ts", "src/transform.ts", "src/grok-provider.ts"],
     unbundle: true,
     platform: "node",
     format: ["esm"],
