@@ -72,22 +72,15 @@ export default defineConfig({
 
   test: {
     include: ["test/**/*.test.ts"],
-    // The fixture trees are inputs the lint reads from disk, and one of them is
-    // deliberately broken. Vitest must never try to collect them as suites.
     exclude: ["node_modules/**", "dist/**", "test/fixtures/**"],
   },
 
   pack: {
-    // promptfoo loads the transform and Cursor provider by file URL. Both must
-    // be real files beside cli.js. `unbundle` keeps the source layout 1:1.
     entry: ["src/cli.ts", "src/transform.ts", "src/cursor-provider.ts", "src/cursor-process.ts"],
     unbundle: true,
     platform: "node",
     format: ["esm"],
-    // The package is `type: module`, so `.js` is already ESM. tsdown would
-    // otherwise emit `.mjs` and silently move the `bin` target.
     fixedExtension: false,
-    // This package exposes a binary, not an importable API.
     dts: false,
     sourcemap: false,
   },
@@ -97,7 +90,6 @@ export default defineConfig({
   },
 
   lint: {
-    // One fixture is deliberately invalid input for skillcheck itself.
     ignorePatterns: ["dist/**", "test/fixtures/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },

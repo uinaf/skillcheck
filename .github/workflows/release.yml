@@ -1,13 +1,5 @@
 name: Release
 
-# The file name is load-bearing. npm Trusted Publishing binds this package's
-# OIDC identity to `.github/workflows/release.yml` plus the `release`
-# environment. Rename or move this file and `npm publish` fails with an identity
-# mismatch until someone updates the trusted publisher on npmjs.com. So the
-# publish job stays here, calling the shared uinaf/.github release-npm
-# workflow, which binds the `release` environment; anything else that runs on
-# a push to main comes to it rather than the other way round.
-
 on:
   push:
     branches: [main]
@@ -19,8 +11,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # One verify and one secret scan, called from their own files so a pull
-  # request, the merge queue, and this push all run the same definition.
   verify:
     if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
     permissions:
@@ -33,17 +23,11 @@ jobs:
       contents: read
     uses: uinaf/.github/.github/workflows/scan.yml@273d0888178ba4795605c440bef144d8882331fc # v1.0.0
 
-  # A skipped dependency skips its dependents, so `[skip ci]` is declared once
-  # above and reaches this job through `needs`. The version writeback carries
-  # that marker, which is what stops a release from releasing itself.
   release:
     needs: [verify, scan]
     permissions:
       contents: read
-      id-token: write # OIDC for npm trusted publishing; the shared job needs it too
+      id-token: write
     uses: uinaf/.github/.github/workflows/release-npm.yml@273d0888178ba4795605c440bef144d8882331fc # v1.0.0
-    # The App private key lives on this repository's release Environment. The
-    # shared job binds that Environment, so GitHub substitutes the Environment
-    # value for the one named here.
     secrets:
       UINAF_CI_APP_PRIVATE_KEY: ${{ secrets.UINAF_CI_APP_PRIVATE_KEY }}

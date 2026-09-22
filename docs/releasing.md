@@ -40,6 +40,7 @@ Deleting the `release` environment deletes both rows above with it, and there is
 no repo-level fallback: `create-github-app-token` then runs with empty inputs
 and the job fails at that step. The private key cannot be read back from
 GitHub; recreating it means generating a new one in the App settings.
+The App private key lives on the `release` Environment; the shared release-npm job binds that Environment, so GitHub substitutes the Environment value for the secret named in `release.yml`.
 
 ## Version history
 

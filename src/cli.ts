@@ -441,7 +441,6 @@ export function reduceResults(
     const judge = raw.config?.defaultTest?.options?.provider;
     const base = f.replace(/\.json$/, "");
     const { skill, scenario, harness } = resultIdentity(f);
-    // Missing provenance sidecars are classified as unattested.
     let sha = "unattested";
     try {
       sha =
