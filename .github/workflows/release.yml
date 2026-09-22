@@ -4,8 +4,9 @@ name: Release
 # OIDC identity to `.github/workflows/release.yml` plus the `release`
 # environment. Rename or move this file and `npm publish` fails with an identity
 # mismatch until someone updates the trusted publisher on npmjs.com. So the
-# publish job stays here, and anything else that runs on a push to main comes
-# to it rather than the other way round.
+# publish job stays here, calling the shared uinaf/.github release-npm
+# workflow, which binds the `release` environment; anything else that runs on
+# a push to main comes to it rather than the other way round.
 
 on:
   push:
@@ -41,7 +42,6 @@ jobs:
       contents: read
       id-token: write # OIDC for npm trusted publishing; the shared job needs it too
     uses: uinaf/.github/.github/workflows/release-npm.yml@main
-    with:
-      app-client-id: ${{ vars.UINAF_CI_APP_CLIENT_ID }}
-    secrets:
-      app-private-key: ${{ secrets.UINAF_CI_APP_PRIVATE_KEY }}
+    # The App credentials live on this repository's release Environment; the
+    # shared job binds that Environment and reads them itself.
+    secrets: inherit
