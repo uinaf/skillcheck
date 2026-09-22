@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { test } from "vite-plus/test";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -41,16 +41,15 @@ test("packed CLI installs without eval peers and lints", () => {
     );
     assert.equal(linted.status, 0, linted.stderr);
     assert.match(linted.stdout, /skill lint: 2 package\(s\) clean/);
-
-    const providerPath = path.join(
+    const grokProviderPath = path.join(
       consumer,
-      "node_modules/@uinaf/skillcheck/dist/cursor-provider.js",
+      "node_modules/@uinaf/skillcheck/dist/grok-provider.js",
     );
-    assert.ok(fs.existsSync(path.join(path.dirname(providerPath), "cursor-process.js")));
-    const fake = path.join(temp, "fake-cursor-agent");
+    assert.ok(fs.existsSync(grokProviderPath));
+    const fake = path.join(temp, "fake-grok");
     fs.writeFileSync(
       fake,
-      `#!${process.execPath}\nsetTimeout(() => process.exit(1), 4000); process.stdin.resume(); process.stdin.on('end', () => { process.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', result: 'packaged fixture' })); process.exit(0); });\n`,
+      `#!${process.execPath}\nprocess.stdout.write(JSON.stringify({type:'text',data:'packaged fixture'})+'\\n'+JSON.stringify({type:'end',stopReason:'end_turn'})+'\\n');\n`,
     );
     fs.chmodSync(fake, 0o755);
     const evaluated = run(
@@ -58,13 +57,7 @@ test("packed CLI installs without eval peers and lints", () => {
       [
         "--input-type=module",
         "-e",
-        `
-      import Provider from ${JSON.stringify(providerPath)};
-      const response = await new Provider({ config: {
-        working_dir: ${JSON.stringify(temp)}, command: ${JSON.stringify(fake)}, timeout_ms: 2000
-      } }).callApi('synthetic prompt');
-      process.stdout.write(JSON.stringify(response));
-    `,
+        `import Provider from ${JSON.stringify(pathToFileURL(grokProviderPath).href)}; const response = await new Provider({config:{working_dir:${JSON.stringify(temp)},skill:'demo',command:${JSON.stringify(fake)}}}).callApi('task'); process.stdout.write(JSON.stringify(response));`,
       ],
       consumer,
     );

@@ -8,8 +8,8 @@ A scenario is two files in a frozen location:
 ```
 
 The path is the identity: `<skill>--<scenario>` names the run, the result file,
-and the scorecard entry. On the codex and cursor harnesses the name gains a
-`--codex` or `--cursor` suffix, so every harness can hold results side by side.
+and the scorecard entry. Codex and Grok results gain `--codex` and `--grok`
+suffixes, so harnesses can hold results side by side.
 A directory missing either file is not discovered.
 
 ## task.md
@@ -28,8 +28,8 @@ Fix the failing check in the config below.
 Each block is replaced in the prompt with a pointer ("Input file `config.json`
 is available in your working directory.") and written to disk. Destinations
 must stay under the workdir, must not collide, and must not target `.claude/`,
-`.agents/`, or `.cursor/`, since a fixture that writes agent config would be
-configuring its own examiner.
+`.agents/`, `.grok/`, or `node_modules/`, since a fixture must not configure its
+own examiner or embed generated dependencies.
 
 Write the task the way a user would write it. Do not name the skill, describe
 its steps, or hint at the checklist: routing is part of what is being measured.
@@ -83,8 +83,8 @@ frontmatter block; body text mentioning the key does not count.
 Per run, under `<root>/.skillcheck/scratch/<name>/`, rebuilt from scratch each
 time. The skill under test is installed where the harness discovers skills:
 `.claude/skills/<skill>/`, plus `.agents/skills/<skill>/` on codex, or
-`.cursor/skills/<skill>/` alone on cursor, with its `evals/` directory
-excluded, so criteria never leak into the agent's context.
+`.grok/skills/<skill>/` on Grok, with its `evals/` directory excluded, so
+criteria never leak into the agent's context.
 
 Scenario quality is behavioral proof; [authoring](authoring.md) covers the
 judgment layer lint and evals cannot grade.

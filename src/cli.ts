@@ -89,8 +89,8 @@ export function stateDirs(root: string): { results: string; scratch: string; sco
 
 function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
-  if (harness !== "claude" && harness !== "codex" && harness !== "cursor")
-    fail(`--harness must be claude, codex, or cursor, got ${harness}`);
+  if (harness !== "claude" && harness !== "codex" && harness !== "grok")
+    fail(`--harness must be claude, codex, or grok, got ${harness}`);
   if (flags.has("--max-turns") && harness !== "claude")
     fail("--max-turns is only supported with --harness claude");
   const agent = flags.get("--agent") as string | undefined;
@@ -106,7 +106,7 @@ function runOptions(flags: Map<string, string | true>): RunOptions {
   }
   return {
     harness: harness as Harness,
-    // claude defaults in scenario.ts; codex/cursor undefined = that CLI's default
+    // claude defaults in scenario.ts; codex/grok undefined = that CLI's default
     agentModel: agent,
     judgeModel,
     judgeEffort,
@@ -230,7 +230,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
     scratchDir: dirs.scratch,
     transformPath: path.join(here, `transform${selfExt}`),
-    cursorProviderPath: path.join(here, `cursor-provider${selfExt}`),
+    grokProviderPath: path.join(here, `grok-provider${selfExt}`),
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
@@ -331,7 +331,7 @@ function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length !== 1)
     fail(
-      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|cursor]",
+      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|grok]",
     );
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
@@ -387,7 +387,7 @@ function cmdSweep(argv: string[]): void {
 export interface ScorecardEntry {
   skill: string;
   scenario: string;
-  harness: Harness;
+  harness: Harness | "cursor";
   skills_tree_sha: string;
   score: number;
   pass: boolean;
@@ -399,9 +399,10 @@ export interface ScorecardEntry {
 
 function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
   const base = file.replace(/\.json$/, "");
-  const suffix = base.match(/--(codex|cursor)$/);
-  const harness: Harness = suffix === null ? "claude" : (suffix[1] as Harness);
-  const [skill, ...rest] = base.replace(/--(codex|cursor)$/, "").split("--");
+  const suffix = base.match(/--(codex|grok|cursor)$/);
+  const harness: ScorecardEntry["harness"] =
+    suffix === null ? "claude" : (suffix[1] as ScorecardEntry["harness"]);
+  const [skill, ...rest] = base.replace(/--(codex|grok|cursor)$/, "").split("--");
   return { skill, scenario: rest.join("--"), harness };
 }
 
@@ -421,6 +422,11 @@ export function reduceResults(
   );
   const results = files.filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"));
   for (const f of [...new Set([...results, ...incomplete])].sort()) {
+    if (f.endsWith("--cursor.json")) {
+      console.error(`skipping ${f}: Cursor harness is retired`);
+      skipped.push(f);
+      continue;
+    }
     if (incomplete.has(f)) {
       console.error(`skipping ${f}: attempt did not complete with a graded result`);
       skipped.push(f);

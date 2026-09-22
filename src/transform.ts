@@ -39,7 +39,7 @@ export default function transform(output: string, context: TransformContext): st
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (e.name !== ".claude") walk(p);
+        if (e.name !== ".claude" && e.name !== ".grok" && e.name !== "node_modules") walk(p);
       } else if (e.isFile()) {
         const rel = path.relative(workdir, p);
         visited.add(rel);

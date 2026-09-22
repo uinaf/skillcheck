@@ -34,6 +34,7 @@ clean, 1 with findings.
 skillcheck run skills/<skill>/evals/<scenario>
 skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex
 skillcheck run <scenario-dir> --harness claude --max-turns 80
+skillcheck run <scenario-dir> --harness grok
 ```
 
 Materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
@@ -49,22 +50,15 @@ message, and writes no provenance sidecar. It is never reported as
 
 Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
 and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
-Claude; passing it with `codex` or `cursor` fails before the eval starts. On
+Claude; passing it with `codex` or `grok` fails before the eval starts. On
 those harnesses, omitting `--agent` leaves the model to that CLI's own default.
 
-`--harness cursor` drives the scenario through the Cursor Agent CLI
-(`cursor-agent` on PATH) with the skill installed under `.cursor/skills/`;
-`--agent` names a Cursor model id, e.g. `composer-2.5`. There is no promptfoo
-cursor provider, so the run uses this package's own provider module, which
-replays the CLI's `stream-json` output: the `result` event becomes the graded
-output and `SKILL.md` reads under `.cursor/skills/` become the `skill-used`
-evidence. Grading requires both a successful result event and harness exit code
-zero. On macOS and Linux, a supervisor owns the process group and kills remaining
-helpers when the harness exits, times out, or the provider disconnects. Output
-pipes have a separate two-second cleanup/drain deadline; incomplete cleanup is
-an error. Helpers that detach into another process group are outside this cleanup
-boundary; retained output pipes still cause a bounded error. Windows retains
-only direct-child cleanup. The judge leg is unchanged.
+`--harness grok` runs the locally installed Grok Build CLI in the disposable
+workdir with the skill under `.grok/skills/`. It uses native streaming events
+to count a completed read of that skill's `SKILL.md` as `skill-used` evidence.
+Grok must be logged in locally or have its supported credentials configured.
+The run disables web search and subagents and grants edit permission in the
+workdir. `--agent` selects a Grok model ID.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed
@@ -122,6 +116,8 @@ with a warning rather than failing the reduction. Graded assertion failures
 remain scored results. If a skipped file matches an existing scorecard row,
 summary generation fails and leaves the scorecard unchanged, so an errored rerun
 cannot carry forward its old score. This also applies with `--allow-mixed`.
+Results from the retired Cursor harness are skipped with their original identity,
+so they cannot become Claude scores or silently carry an old Cursor row.
 Runs keep a `<name>.json.attempt` marker until a graded result and its provenance
 are written. An outstanding marker makes `summarize` skip that identity even
 when the child produced no result file or left partial output. The marker does
@@ -162,7 +158,6 @@ written inside the installed package.
 | `ANTHROPIC_API_KEY`                           | Judge grades over `anthropic:messages:<model>` instead of the SDK |
 | `CODEX_HOME` (default `~/.codex`)             | Where the codex harness finds the local `codex` CLI login         |
 | `OPENAI_API_KEY`                              | Agent auth for codex when there is no local login                 |
-| `CURSOR_API_KEY`                              | Agent auth for cursor; a logged-in `cursor-agent` also works      |
 | `OPENAI_API_KEY` + `OPENAI_BASE_URL`          | A provider-qualified `--judge openai:…`, optionally via a gateway |
 
 A bare `--judge` model stays on the Anthropic selection regardless of the
