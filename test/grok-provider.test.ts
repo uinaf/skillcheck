@@ -103,3 +103,47 @@ test("Grok provider treats an incomplete turn as an error", async () => {
     fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
   }
 });
+
+for (const stdio of ["ignore", "inherit"] as const)
+  test(`Grok provider stops helpers with ${stdio} stdio`, async () => {
+    if (process.platform === "win32") return;
+    const fixtureRun = fixture([]);
+    const pidFile = path.join(fixtureRun.dir, "helper.pid");
+    fs.writeFileSync(
+      fixtureRun.command,
+      `#!${process.execPath}\nconst { spawn } = require("node:child_process");\nconst fs = require("node:fs");\nconst helper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: ${JSON.stringify(stdio)} });\nfs.writeFileSync(${JSON.stringify(pidFile)}, String(helper.pid));\nhelper.unref();\nprocess.stdout.write(JSON.stringify({ type: "end", stopReason: "end_turn" }) + "\\n");\n`,
+    );
+    let helperPid: number | undefined;
+    try {
+      const result = await new GrokProvider({
+        config: {
+          working_dir: fixtureRun.dir,
+          skill: "signal",
+          command: fixtureRun.command,
+          timeout_ms: 1_000,
+        },
+      }).callApi("task");
+      assert.equal(result.error, undefined);
+      helperPid = Number(fs.readFileSync(pidFile, "utf8"));
+      let alive = true;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        try {
+          process.kill(helperPid, 0);
+        } catch {
+          alive = false;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(alive, false, "a successful run must not leave its helper alive");
+    } finally {
+      if (helperPid !== undefined) {
+        try {
+          process.kill(helperPid, "SIGKILL");
+        } catch {
+          // The provider already stopped it.
+        }
+      }
+      fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
+    }
+  });

@@ -94,13 +94,25 @@ export function loadScenario(scenarioDir: string): Scenario {
 
 // Canonical run/result name for a scenario + harness. Single source of truth:
 // generateRun names its scratch dir and cli.ts names result files with this.
+export function encodeRunNamePart(part: string): string {
+  if (
+    !part.includes("--") &&
+    !part.startsWith("-") &&
+    !part.endsWith("-") &&
+    !part.startsWith("~v2~")
+  )
+    return part;
+  return `~v2~${encodeURIComponent(part).replaceAll("-", "%2D").replaceAll("~", "%7E")}`;
+}
+
 export function runNameFor(scenarioDir: string, harness: Harness): string {
   const m = path.resolve(scenarioDir).match(/skills\/([^/]+)\/evals\/([^/]+)$/);
   if (!m)
     throw new Error(
       `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
     );
-  return harness === "claude" ? `${m[1]}--${m[2]}` : `${m[1]}--${m[2]}--${harness}`;
+  const name = `${encodeRunNamePart(m[1])}--${encodeRunNamePart(m[2])}`;
+  return harness === "claude" ? name : `${name}--${harness}`;
 }
 
 // disable-model-invocation is recognized only in YAML frontmatter. Body text

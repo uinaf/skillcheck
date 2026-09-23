@@ -77,7 +77,7 @@ provider-qualified judge; the Anthropic judge does not take one.
 ## Sweep
 
 ```sh
-skillcheck sweep           # only scenarios without results
+skillcheck sweep           # scenarios without completed results
 skillcheck sweep --all     # rerun everything
 ```
 
@@ -91,8 +91,8 @@ within one scenario, not across them.
 One known failure mode: judge calls through a gateway can drop at the transport
 layer ([uinaf/zebroid-infra#44](https://github.com/uinaf/zebroid-infra/issues/44)).
 That surfaces as an ERROR with no usable result, not as a graded FAIL, and the
-mitigation is a rerun. `sweep` without `--all` resumes, so a rerun only picks up
-what is missing.
+mitigation is a rerun. `sweep` without `--all` resumes, so a rerun picks up
+missing or ungraded results.
 
 ## Summarize
 

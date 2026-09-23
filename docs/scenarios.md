@@ -9,7 +9,9 @@ A scenario is two files in a frozen location:
 
 The path is the identity: `<skill>--<scenario>` names the run, the result file,
 and the scorecard entry. Codex and Grok results gain `--codex` and `--grok`
-suffixes, so harnesses can hold results side by side.
+suffixes, so harnesses can hold results side by side. Double hyphens and
+leading or trailing hyphens in a skill or scenario name are escaped in the run
+and result filename; the scorecard keeps the original name.
 A directory missing either file is not discovered.
 
 ## task.md
