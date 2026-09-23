@@ -196,6 +196,17 @@ test("reduceResults preserves a legacy name that starts with the encoding marker
   }
 });
 
+test("reduceResults preserves a legacy skill beginning with the hash marker", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-legacy-hash-name-"));
+  try {
+    writeResult(dir, "~v3~foo--bar", 0.8, true, "sha1");
+    const [entry] = reduceResults(dir, false).entries;
+    assert.deepEqual([entry.skill, entry.scenario, entry.harness], ["~v3~foo", "bar", "claude"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("long escaped run names remain within filename limits and retain identity", () => {
   const scenario = "--".repeat(43);
   const name = runNameFor(`/repo/skills/demo/evals/${scenario}`, "grok");

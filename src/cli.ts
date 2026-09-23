@@ -432,7 +432,7 @@ function resultIdentity(
       // Old results and attempts have no identity metadata.
     }
   }
-  if (base.startsWith("~v3~")) throw new Error(`missing identity metadata for ${file}`);
+  if (/^~v3~[0-9a-f]{64}$/.test(base)) throw new Error(`missing identity metadata for ${file}`);
   const decode = (part: string): string => {
     if (!part.startsWith("~v2~")) return part;
     try {
