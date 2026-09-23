@@ -361,7 +361,7 @@ function cmdSweep(argv: string[]): void {
   for (const dir of discoverScenarios(root)) {
     const name = runNameFor(dir, opts.harness);
     const resultPath = path.join(resultsDir, `${name}.json`);
-    if (!all && fs.existsSync(resultPath)) {
+    if (!all && fs.existsSync(resultPath) && !fs.existsSync(attemptPath(resultPath))) {
       skipped++;
       console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
       continue;
@@ -398,12 +398,20 @@ export interface ScorecardEntry {
 }
 
 function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
+  const decode = (part: string): string => {
+    if (!part.startsWith("~v2~")) return part;
+    try {
+      return decodeURIComponent(part.slice(4));
+    } catch {
+      return part;
+    }
+  };
   const base = file.replace(/\.json$/, "");
   const suffix = base.match(/--(codex|grok|cursor)$/);
   const harness: ScorecardEntry["harness"] =
     suffix === null ? "claude" : (suffix[1] as ScorecardEntry["harness"]);
   const [skill, ...rest] = base.replace(/--(codex|grok|cursor)$/, "").split("--");
-  return { skill, scenario: rest.join("--"), harness };
+  return { skill: decode(skill), scenario: decode(rest.join("--")), harness };
 }
 
 // Pure reducer over a results directory. Skips files that are not promptfoo

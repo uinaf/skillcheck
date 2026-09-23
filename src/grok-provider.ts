@@ -166,6 +166,16 @@ export default class GrokProvider {
       const abort = () => stop("grok run aborted");
       callOptions?.abortSignal?.addEventListener("abort", abort, { once: true });
       if (callOptions?.abortSignal?.aborted) abort();
+      child.on("exit", () => {
+        // The CLI may exit while helpers remain in its detached process group.
+        if (process.platform !== "win32" && child.pid !== undefined) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+          } catch {
+            // The process group has already exited.
+          }
+        }
+      });
       child.on("close", (code, signal) => {
         clearTimeout(timer);
         callOptions?.abortSignal?.removeEventListener("abort", abort);

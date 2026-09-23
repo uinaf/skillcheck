@@ -85,6 +85,54 @@ test("runNameFor: harness-aware result names", () => {
   assert.equal(runNameFor(dir, "codex"), "slopspec--single-item-minimality--codex");
   assert.equal(runNameFor(dir, "grok"), "slopspec--single-item-minimality--grok");
   assert.throws(() => runNameFor("/repo/not-a-scenario", "claude"), /not a scenario dir/);
+  const claude = runNameFor("/repo/skills/demo/evals/basic--grok", "claude");
+  const grok = runNameFor("/repo/skills/demo/evals/basic", "grok");
+  assert.notEqual(claude, grok);
+  assert.notEqual(
+    runNameFor("/repo/skills/a--b/evals/c", "claude"),
+    runNameFor("/repo/skills/a/evals/b--c", "claude"),
+  );
+  assert.notEqual(
+    runNameFor("/repo/skills/a---/evals/b", "claude"),
+    runNameFor("/repo/skills/a--/evals/-b", "claude"),
+  );
+  assert.notEqual(
+    runNameFor("/repo/skills/a-/evals/b", "claude"),
+    runNameFor("/repo/skills/a/evals/-b", "claude"),
+  );
+  assert.equal(
+    runNameFor("/repo/skills/demo/evals/50%--done", "claude"),
+    "demo--~v2~50%25%2D%2Ddone",
+  );
+  assert.equal(runNameFor("/repo/skills/demo/evals/50%done", "claude"), "demo--50%done");
+});
+
+test("run names are unique across separator and harness boundaries", () => {
+  const parts = [
+    "a",
+    "-a",
+    "a-",
+    "-a-",
+    "a--",
+    "--a",
+    "a---",
+    "---a",
+    "a-b",
+    "a--b",
+    "~v2~a",
+    "a%2D",
+  ];
+  const names = new Map<string, string>();
+  for (const skill of parts) {
+    for (const scenario of parts) {
+      for (const harness of ["claude", "codex", "grok"] as const) {
+        const identity = `${skill}/${scenario}/${harness}`;
+        const name = runNameFor(`/repo/skills/${skill}/evals/${scenario}`, harness);
+        assert.equal(names.get(name), undefined, `${identity} collides with ${names.get(name)}`);
+        names.set(name, identity);
+      }
+    }
+  }
 });
 
 function writeResult(
@@ -111,6 +159,28 @@ function writeResult(
     fs.writeFileSync(path.join(dir, `${name}.meta.json`), JSON.stringify({ skills_tree_sha: sha }));
   }
 }
+
+test("reduceResults restores escaped scenario identities", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-identity-"));
+  try {
+    const claude = runNameFor("/repo/skills/demo/evals/basic--grok", "claude");
+    const grok = runNameFor("/repo/skills/demo/evals/basic", "grok");
+    writeResult(dir, claude, 0.8, true);
+    writeResult(dir, grok, 0.9, true);
+    writeResult(dir, runNameFor("/repo/skills/demo/evals/50%--done", "claude"), 0.7, true);
+    const identities = reduceResults(dir, false).entries.map(({ scenario, harness }) => ({
+      scenario,
+      harness,
+    }));
+    assert.deepEqual(identities, [
+      { scenario: "basic", harness: "grok" },
+      { scenario: "50%--done", harness: "claude" },
+      { scenario: "basic--grok", harness: "claude" },
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test("reduceResults: valid, malformed, and unattested results", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
@@ -424,7 +494,13 @@ function seedScorecards(dir: string, original: string): string[] {
   return paths;
 }
 
-for (const mode of ["nonzero-empty", "empty", "malformed", "nonzero-scored"] as const) {
+for (const mode of [
+  "nonzero-empty",
+  "empty",
+  "malformed",
+  "nonzero-scored",
+  "error-json",
+] as const) {
   test(`run: ${mode} rerun cannot refresh an old scorecard`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-run-"));
     try {
@@ -479,6 +555,7 @@ syncBuiltinESMExports();
 const out = process.argv[process.argv.indexOf("-o") + 1];
 const mode = ${JSON.stringify(behavior)};
 if (mode === "malformed") fs.writeFileSync(out, "not JSON");
+if (mode === "error-json") fs.writeFileSync(out, JSON.stringify({results:{results:[{error:"transport failure"}],stats:{successes:0,failures:0,errors:1}}}));
 if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.stringify({ results: { results: [{ score: 0.95, success: true }] } }));
 process.exit(mode.startsWith("nonzero") ? 1 : 0);
 `,
@@ -496,8 +573,8 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
       assert.equal(summary.rc, 1, summary.stdout);
       assert.match(summary.stderr, /skipped rerun/);
       for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
-      if (mode === "empty" || mode === "nonzero-empty") {
-        assert.equal(fs.existsSync(resultPath), false);
+      if (mode === "empty" || mode === "nonzero-empty" || mode === "error-json") {
+        assert.equal(fs.existsSync(resultPath), mode === "error-json");
         const retry = invoke(["sweep"]);
         assert.equal(retry.status, 2, retry.stderr);
         assert.match(retry.stdout, /ERROR demo--basic.attempt/);
