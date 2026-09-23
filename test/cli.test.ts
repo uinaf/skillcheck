@@ -182,6 +182,38 @@ test("reduceResults restores escaped scenario identities", () => {
   }
 });
 
+test("reduceResults preserves a legacy name that starts with the encoding marker", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-legacy-name-"));
+  try {
+    writeResult(dir, "demo--~v2~foo", 0.8, true);
+    writeResult(dir, "demo--foo", 0.9, true);
+    assert.deepEqual(
+      reduceResults(dir, false).entries.map(({ scenario }) => scenario),
+      ["foo", "~v2~foo"],
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("long escaped run names remain within filename limits and retain identity", () => {
+  const scenario = "--".repeat(43);
+  const name = runNameFor(`/repo/skills/demo/evals/${scenario}`, "grok");
+  assert.ok(Buffer.byteLength(`${name}.json.attempt`) <= 255);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-long-name-"));
+  try {
+    writeResult(dir, name, 0.9, true);
+    fs.writeFileSync(
+      path.join(dir, `${name}.meta.json`),
+      JSON.stringify({ skills_tree_sha: "sha1", skill: "demo", scenario, harness: "grok" }),
+    );
+    const [entry] = reduceResults(dir, false).entries;
+    assert.deepEqual([entry.skill, entry.scenario, entry.harness], ["demo", scenario, "grok"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("reduceResults: valid, malformed, and unattested results", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   writeResult(dir, "skillx--scen-a", 0.9, true, "sha1");
@@ -256,6 +288,26 @@ test("retired Cursor results cannot become Claude scores or hide a skipped rerun
     const summarized = runCli(["summarize", "--root", root]);
     assert.equal(summarized.rc, 1);
     assert.match(summarized.stderr, /skipped rerun.*refusing to carry/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a fresh graded result supersedes a legacy attempt for the same scenario", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-legacy-attempt-"));
+  try {
+    const dirs = stateDirs(root);
+    fs.mkdirSync(dirs.results, { recursive: true });
+    fs.mkdirSync(dirs.scorecards, { recursive: true });
+    const name = runNameFor("/repo/skills/demo/evals/-basic", "claude");
+    writeResult(dirs.results, name, 0.9, true, "sha1");
+    fs.writeFileSync(path.join(dirs.results, "demo---basic.json.attempt"), "{}\n");
+    const scorecard = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    fs.writeFileSync(scorecard, JSON.stringify({ scenarios: [entry("demo", "-basic", 0.8)] }));
+    const summary = runCli(["summarize", "--root", root]);
+    assert.equal(summary.rc, 0, summary.stderr);
+    const updated = JSON.parse(fs.readFileSync(scorecard, "utf8"));
+    assert.equal(updated.scenarios[0].score, 0.9);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -500,6 +552,7 @@ for (const mode of [
   "malformed",
   "nonzero-scored",
   "error-json",
+  "error-json-legacy",
 ] as const) {
   test(`run: ${mode} rerun cannot refresh an old scorecard`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-run-"));
@@ -555,7 +608,7 @@ syncBuiltinESMExports();
 const out = process.argv[process.argv.indexOf("-o") + 1];
 const mode = ${JSON.stringify(behavior)};
 if (mode === "malformed") fs.writeFileSync(out, "not JSON");
-if (mode === "error-json") fs.writeFileSync(out, JSON.stringify({results:{results:[{error:"transport failure"}],stats:{successes:0,failures:0,errors:1}}}));
+if (mode.startsWith("error-json")) fs.writeFileSync(out, JSON.stringify({results:{results:[{error:"transport failure"}],stats:{successes:0,failures:0,errors:1}}}));
 if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.stringify({ results: { results: [{ score: 0.95, success: true }] } }));
 process.exit(mode.startsWith("nonzero") ? 1 : 0);
 `,
@@ -569,12 +622,13 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
       assert.equal(failed.status, 2, failed.stderr);
       assert.match(failed.stderr, /ERROR demo--basic.attempt/);
       assert.equal(fs.existsSync(meta), false);
+      if (mode === "error-json-legacy") fs.rmSync(`${resultPath}.attempt`);
       const summary = runCli(["summarize", "--root", root]);
       assert.equal(summary.rc, 1, summary.stdout);
       assert.match(summary.stderr, /skipped rerun/);
       for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
-      if (mode === "empty" || mode === "nonzero-empty" || mode === "error-json") {
-        assert.equal(fs.existsSync(resultPath), mode === "error-json");
+      if (mode === "empty" || mode === "nonzero-empty" || mode.startsWith("error-json")) {
+        assert.equal(fs.existsSync(resultPath), mode.startsWith("error-json"));
         const retry = invoke(["sweep"]);
         assert.equal(retry.status, 2, retry.stderr);
         assert.match(retry.stdout, /ERROR demo--basic.attempt/);

@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintSkills } from "./lint.ts";
 import {
+  encodeRunNamePart,
   generateRun,
   requiredEvalPackages,
   resolvePackageDir,
@@ -227,7 +228,7 @@ function attemptPath(resultPath: string): string {
 
 function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOutcome {
   const dirs = stateDirs(root);
-  const { name, configPath } = generateRun(path.resolve(scenarioDir), opts, {
+  const { name, configPath, skill, scenario } = generateRun(path.resolve(scenarioDir), opts, {
     scratchDir: dirs.scratch,
     transformPath: path.join(here, `transform${selfExt}`),
     grokProviderPath: path.join(here, `grok-provider${selfExt}`),
@@ -236,7 +237,8 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const resultPath = path.join(dirs.results, `${name}.json`);
   // Keep attempted identity even when the child produces no output. This is
   // separate from the result so a no-output failure remains eligible for sweep.
-  fs.writeFileSync(attemptPath(resultPath), "{}\n");
+  const identity = { skill, scenario, harness: opts.harness };
+  fs.writeFileSync(attemptPath(resultPath), JSON.stringify(identity) + "\n");
   // Never let a stale result masquerade as this run's outcome.
   fs.rmSync(resultPath, { force: true });
   fs.rmSync(metaPath(resultPath), { force: true });
@@ -285,7 +287,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
       JSON.stringify(
         {
           skills_tree_sha: sha,
-          harness: opts.harness,
+          ...identity,
           ran_at: new Date().toISOString(),
           tool_version: toolVersion(),
         },
@@ -362,9 +364,16 @@ function cmdSweep(argv: string[]): void {
     const name = runNameFor(dir, opts.harness);
     const resultPath = path.join(resultsDir, `${name}.json`);
     if (!all && fs.existsSync(resultPath) && !fs.existsSync(attemptPath(resultPath))) {
-      skipped++;
-      console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
-      continue;
+      try {
+        const verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")));
+        if (verdict.score !== undefined) {
+          skipped++;
+          console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
+          continue;
+        }
+      } catch {
+        // A malformed legacy result is incomplete and must be rerun.
+      }
     }
     const o = runScenario(dir, opts, root);
     if (o.score === undefined) {
@@ -397,16 +406,42 @@ export interface ScorecardEntry {
   tokens: number;
 }
 
-function resultIdentity(file: string): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
+function resultIdentity(
+  file: string,
+  dir: string,
+): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
+  const base = file.replace(/\.json$/, "");
+  for (const sidecar of [`${base}.meta.json`, `${file}.attempt`]) {
+    try {
+      const identity: unknown = JSON.parse(fs.readFileSync(path.join(dir, sidecar), "utf8"));
+      if (
+        identity !== null &&
+        typeof identity === "object" &&
+        "skill" in identity &&
+        typeof identity.skill === "string" &&
+        "scenario" in identity &&
+        typeof identity.scenario === "string" &&
+        "harness" in identity &&
+        (identity.harness === "claude" ||
+          identity.harness === "codex" ||
+          identity.harness === "grok")
+      ) {
+        return { skill: identity.skill, scenario: identity.scenario, harness: identity.harness };
+      }
+    } catch {
+      // Old results and attempts have no identity metadata.
+    }
+  }
+  if (base.startsWith("~v3~")) throw new Error(`missing identity metadata for ${file}`);
   const decode = (part: string): string => {
     if (!part.startsWith("~v2~")) return part;
     try {
-      return decodeURIComponent(part.slice(4));
+      const decoded = decodeURIComponent(part.slice(4));
+      return encodeRunNamePart(decoded) === part ? decoded : part;
     } catch {
       return part;
     }
   };
-  const base = file.replace(/\.json$/, "");
   const suffix = base.match(/--(codex|grok|cursor)$/);
   const harness: ScorecardEntry["harness"] =
     suffix === null ? "claude" : (suffix[1] as ScorecardEntry["harness"]);
@@ -456,7 +491,7 @@ export function reduceResults(
     const provider = raw.config?.providers?.[0];
     const judge = raw.config?.defaultTest?.options?.provider;
     const base = f.replace(/\.json$/, "");
-    const { skill, scenario, harness } = resultIdentity(f);
+    const { skill, scenario, harness } = resultIdentity(f, dir);
     let sha = "unattested";
     try {
       sha =
@@ -551,7 +586,12 @@ function cmdSummarize(argv: string[]): void {
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const existing = readExistingScorecard(out);
-  const skippedKeys = new Set(skipped.map((file) => entryKey(resultIdentity(file))));
+  const freshKeys = new Set(entries.map(entryKey));
+  const skippedKeys = new Set(
+    skipped
+      .map((file) => entryKey(resultIdentity(file, dirs.results)))
+      .filter((key) => !freshKeys.has(key)),
+  );
   if (existing.some((entry) => skippedKeys.has(entryKey(entry)))) {
     throw new Error(
       "skipped rerun matches an existing score; refusing to carry it or overwrite the scorecard",
