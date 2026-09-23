@@ -115,14 +115,19 @@ Files that are not promptfoo results and ungraded transport errors are skipped
 with a warning rather than failing the reduction. Graded assertion failures
 remain scored results. If a skipped file matches an existing scorecard row,
 summary generation fails and leaves the scorecard unchanged, so an errored rerun
-cannot carry forward its old score. This also applies with `--allow-mixed`.
+cannot carry forward its old score. A graded result for the same identity
+supersedes a skipped attempt only when the result file is newer. This also
+applies with `--allow-mixed`.
 Results from the retired Cursor harness are skipped with their original identity,
 so they cannot become Claude scores or silently carry an old Cursor row.
 Runs keep a `<name>.json.attempt` marker until a graded result and its provenance
-are written. An outstanding marker makes `summarize` skip that identity even
+are written. The marker records the original skill, scenario, and harness. An outstanding marker makes `summarize` skip that identity even
 when the child produced no result file or left partial output. The marker does
 not count as a result for the sweep's existence check, so no-output failures
 remain eligible for retry.
+Long escaped names use a short hashed filename; the original identity is kept
+in the attempt marker and result sidecar. `sweep` retries existing results that
+contain no grade, including results written by older versions without a marker.
 
 ## Provenance
 
@@ -131,6 +136,8 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
 ```json
 {
   "skills_tree_sha": "<root repo HEAD at run time>",
+  "skill": "<skill directory name>",
+  "scenario": "<scenario directory name>",
   "harness": "claude",
   "ran_at": "<ISO timestamp>",
   "tool_version": "<skillcheck version>"

@@ -112,7 +112,11 @@ export function runNameFor(scenarioDir: string, harness: Harness): string {
       `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
     );
   const name = `${encodeRunNamePart(m[1])}--${encodeRunNamePart(m[2])}`;
-  return harness === "claude" ? name : `${name}--${harness}`;
+  const full = harness === "claude" ? name : `${name}--${harness}`;
+  if (Buffer.byteLength(`${full}.json.attempt`) <= 255) return full;
+  return `~v3~${createHash("sha256")
+    .update(JSON.stringify([m[1], m[2], harness]))
+    .digest("hex")}`;
 }
 
 // disable-model-invocation is recognized only in YAML frontmatter. Body text
@@ -385,7 +389,7 @@ export function generateRun(
   scenarioDir: string,
   opts: RunOptions,
   paths: RunPaths,
-): { name: string; configPath: string } {
+): { name: string; configPath: string; skill: string; scenario: string } {
   const s = loadScenario(scenarioDir);
   const name = runNameFor(scenarioDir, opts.harness);
   const runDir = path.join(paths.scratchDir, name);
@@ -403,5 +407,5 @@ export function generateRun(
   const config = buildConfig(s, workdir, manifestPath, opts, paths);
   const configPath = path.join(runDir, "promptfooconfig.json");
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  return { name, configPath };
+  return { name, configPath, skill: s.skill, scenario: s.scenario };
 }
