@@ -40,11 +40,11 @@ Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test r
 
 ## Pipelines
 
-| Workflow                        | Trigger                          | Jobs                                                                                                                                         |
-| ------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/verify.yml`  | PR, merge queue, `workflow_call` | `verify`; the one definition, called by below                                                                                                |
-| `.github/workflows/release.yml` | Push to `main`                   | (verify + scan) → npm publish (`release` environment)                                                                                        |
-| `.github/workflows/scan.yml`    | PR, weekly                       | Caller for the shared scan in `uinaf/.github`: gitleaks and trufflehog always, actionlint and zizmor when workflow or scanner config changes |
+| Workflow                        | Trigger                       | Jobs                                                                                                                                         |
+| ------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/verify.yml`  | PR, `workflow_call`, dispatch | `verify`; the one definition, called by below                                                                                                |
+| `.github/workflows/release.yml` | Push to `main`                | (verify + scan) → npm publish (`release` environment)                                                                                        |
+| `.github/workflows/scan.yml`    | PR, weekly                    | Caller for the shared scan in `uinaf/.github`: gitleaks and trufflehog always, actionlint and zizmor when workflow or scanner config changes |
 
 `verify` and `scan` run in parallel; `release` waits on both. `[skip ci]` is declared once on the two gates, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
 `verify.yml` groups concurrency on `github.workflow` and `github.ref`, which resolve to the caller when called from `release.yml`, so a called run never collides with a PR run. `pnpm-workspace.yaml` denies the browser, ONNX, and image-processing build scripts that the optional promptfoo peer pulls in: scenarios grade text with a remote judge and never take that path.
