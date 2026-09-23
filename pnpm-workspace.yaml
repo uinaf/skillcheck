@@ -6,8 +6,12 @@ allowBuilds:
   onnxruntime-node: false
   sharp: false
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.2.9
-  vite-plus: 0.2.9
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.2
+  vite-plus: 0.3.2
+ignoredOptionalDependencies:
+  # promptfoo security-scan path; skillcheck never runs it. Its extract-zip has no patch for
+  # GHSA-jmr9-qjv8-65gv, GHSA-7pqw-9j4j-h8q3. Drop once a patched extract-zip ships.
+  - "@openai/codex-security"
 minimumReleaseAgeExclude:
   - adm-zip@0.6.1
 overrides:
