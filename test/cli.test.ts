@@ -300,14 +300,41 @@ test("a fresh graded result supersedes a legacy attempt for the same scenario", 
     fs.mkdirSync(dirs.results, { recursive: true });
     fs.mkdirSync(dirs.scorecards, { recursive: true });
     const name = runNameFor("/repo/skills/demo/evals/-basic", "claude");
+    const oldAttempt = path.join(dirs.results, "demo---basic.json.attempt");
+    fs.writeFileSync(oldAttempt, "{}\n");
+    fs.utimesSync(oldAttempt, new Date(0), new Date(0));
     writeResult(dirs.results, name, 0.9, true, "sha1");
-    fs.writeFileSync(path.join(dirs.results, "demo---basic.json.attempt"), "{}\n");
     const scorecard = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
     fs.writeFileSync(scorecard, JSON.stringify({ scenarios: [entry("demo", "-basic", 0.8)] }));
     const summary = runCli(["summarize", "--root", root]);
     assert.equal(summary.rc, 0, summary.stderr);
     const updated = JSON.parse(fs.readFileSync(scorecard, "utf8"));
     assert.equal(updated.scenarios[0].score, 0.9);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a newer failed attempt cannot be hidden by an older graded result", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-new-attempt-"));
+  try {
+    const dirs = stateDirs(root);
+    fs.mkdirSync(dirs.results, { recursive: true });
+    fs.mkdirSync(dirs.scorecards, { recursive: true });
+    const oldResult = path.join(dirs.results, "demo---basic.json");
+    writeResult(dirs.results, "demo---basic", 0.8, true, "sha1");
+    fs.utimesSync(oldResult, new Date(0), new Date(0));
+    const name = runNameFor("/repo/skills/demo/evals/-basic", "claude");
+    fs.writeFileSync(
+      path.join(dirs.results, `${name}.json.attempt`),
+      JSON.stringify({ skill: "demo", scenario: "-basic", harness: "claude" }),
+    );
+    const scorecard = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    fs.writeFileSync(scorecard, JSON.stringify({ scenarios: [entry("demo", "-basic", 0.8)] }));
+    const summary = runCli(["summarize", "--root", root]);
+    assert.equal(summary.rc, 1);
+    assert.match(summary.stderr, /skipped rerun/);
+    assert.equal(JSON.parse(fs.readFileSync(scorecard, "utf8")).scenarios[0].score, 0.8);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

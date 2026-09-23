@@ -455,9 +455,15 @@ function resultIdentity(
 export function reduceResults(
   dir: string,
   allowMixed: boolean,
-): { treeSha: string; entries: ScorecardEntry[]; skipped: string[] } {
+): {
+  treeSha: string;
+  entries: ScorecardEntry[];
+  skipped: string[];
+  gradedAt: Map<string, number>;
+} {
   const entries: ScorecardEntry[] = [];
   const skipped: string[] = [];
+  const gradedAt = new Map<string, number>();
   const shas = new Set<string>();
   const files = fs.readdirSync(dir);
   const incomplete = new Set(
@@ -492,6 +498,8 @@ export function reduceResults(
     const judge = raw.config?.defaultTest?.options?.provider;
     const base = f.replace(/\.json$/, "");
     const { skill, scenario, harness } = resultIdentity(f, dir);
+    const key = entryKey({ skill, scenario, harness });
+    gradedAt.set(key, Math.max(gradedAt.get(key) ?? 0, fs.statSync(path.join(dir, f)).mtimeMs));
     let sha = "unattested";
     try {
       sha =
@@ -526,7 +534,7 @@ export function reduceResults(
     );
   }
   const treeSha = shas.size === 1 ? [...shas][0] : shas.size === 0 ? "none" : "mixed";
-  return { treeSha, entries, skipped };
+  return { treeSha, entries, skipped, gradedAt };
 }
 
 // One scenario's identity in a scorecard. Rerunning a subset must update those
@@ -582,15 +590,25 @@ function cmdSummarize(argv: string[]): void {
   const dirs = stateDirs(resolveRoot(flags));
   if (!fs.existsSync(dirs.results))
     fail(`no results directory at ${dirs.results}; run some evals first`);
-  const { entries, skipped } = reduceResults(dirs.results, flags.get("--allow-mixed") === true);
+  const { entries, skipped, gradedAt } = reduceResults(
+    dirs.results,
+    flags.get("--allow-mixed") === true,
+  );
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const existing = readExistingScorecard(out);
-  const freshKeys = new Set(entries.map(entryKey));
   const skippedKeys = new Set(
     skipped
-      .map((file) => entryKey(resultIdentity(file, dirs.results)))
-      .filter((key) => !freshKeys.has(key)),
+      .map((file) => ({
+        key: entryKey(resultIdentity(file, dirs.results)),
+        modifiedAt: fs.statSync(
+          fs.existsSync(path.join(dirs.results, `${file}.attempt`))
+            ? path.join(dirs.results, `${file}.attempt`)
+            : path.join(dirs.results, file),
+        ).mtimeMs,
+      }))
+      .filter(({ key, modifiedAt }) => (gradedAt.get(key) ?? 0) <= modifiedAt)
+      .map(({ key }) => key),
   );
   if (existing.some((entry) => skippedKeys.has(entryKey(entry)))) {
     throw new Error(
