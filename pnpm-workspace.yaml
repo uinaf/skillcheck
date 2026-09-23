@@ -6,18 +6,28 @@ allowBuilds:
   onnxruntime-node: false
   sharp: false
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.2
-  vite-plus: 0.3.2
+  vite: npm:@voidzero-dev/vite-plus-core@1.0.0-rc.0
+  vite-plus: 1.0.0-rc.0
 ignoredOptionalDependencies:
   # promptfoo security-scan path; skillcheck never runs it. Its extract-zip has no patch for
   # GHSA-jmr9-qjv8-65gv, GHSA-7pqw-9j4j-h8q3. Drop once a patched extract-zip ships.
   - "@openai/codex-security"
 minimumReleaseAgeExclude:
   - adm-zip@0.6.1
+  - "@voidzero-dev/vite-plus-core@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-darwin-arm64@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-darwin-x64@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-linux-arm64-gnu@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-linux-arm64-musl@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-linux-x64-gnu@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-linux-x64-musl@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-win32-arm64-msvc@1.0.0-rc.0"
+  - "@voidzero-dev/vite-plus-win32-x64-msvc@1.0.0-rc.0"
+  - vite-plus@1.0.0-rc.0
 overrides:
-  vite: "catalog:"
   "adm-zip@<0.6.1": "^0.6.1" # GHSA-xcpc-8h2w-3j85, GHSA-vwc7-r8mq-g2x9
   "sharp@<0.35.4": "^0.35.4" # GHSA-f88m-g3jw-g9cj, GHSA-rgj7-g3m4-5g8c
+  vite@*: "catalog:"
 peerDependencyRules:
   allowAny:
     - vite
