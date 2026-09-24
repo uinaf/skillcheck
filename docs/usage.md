@@ -109,9 +109,16 @@ skillcheck run <scenario-dir> --judge openai:chat:gpt-5.6-sol --judge-effort hig
 
 A provider-qualified judge authenticates through that provider's own env
 (`OPENAI_API_KEY`, plus `OPENAI_BASE_URL` for a gateway) and is recorded
-verbatim in the scorecard's `judge_model` column. `--judge-effort`
-(minimal|low|medium|high) sets `reasoning_effort` and requires a
-provider-qualified judge; the Anthropic judge does not take one.
+verbatim in the scorecard's `judge_model` column. For it, `--judge-effort`
+(minimal|low|medium|high) sets `reasoning_effort`. For a bare Claude judge,
+`--judge-effort` takes Claude's levels (low|medium|high|xhigh|max) and is passed
+as `effort` on either Anthropic path; the SDK judge starts Claude Code with
+`--effort`:
+
+```sh
+skillcheck run <scenario-dir> --agent claude-opus-5-5 --agent-effort medium \
+  --judge claude-opus-5-5 --judge-effort high --trials 3
+```
 
 ## Sweep
 

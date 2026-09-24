@@ -112,11 +112,12 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
   const judgeModel = (flags.get("--judge") as string | undefined) ?? "claude-opus-5";
   const judgeEffort = flags.get("--judge-effort") as string | undefined;
   if (judgeEffort !== undefined) {
-    if (!["minimal", "low", "medium", "high"].includes(judgeEffort))
-      throw new Error(`--judge-effort must be minimal, low, medium, or high, got ${judgeEffort}`);
-    if (!judgeModel.includes(":"))
+    // A bare Claude judge takes Claude's effort levels; a provider-qualified
+    // judge takes that provider's reasoning_effort.
+    const levels = judgeModel.includes(":") ? ["minimal", "low", "medium", "high"] : AGENT_EFFORTS;
+    if (!levels.includes(judgeEffort))
       throw new Error(
-        "--judge-effort needs a provider-qualified --judge (e.g. openai:chat:gpt-5.6-sol); the Anthropic judge does not take a reasoning effort",
+        `--judge-effort for ${judgeModel} must be ${levels.join(", ")}, got ${judgeEffort}`,
       );
   }
   return {
@@ -489,9 +490,12 @@ function judgeName(judge: unknown): string {
   // lose their provider prefix; SDK judge objects carry the model in config,
   // while wrapped providers carry it in id.
   if (typeof judge === "string") return judge.replace(/^anthropic:messages:/, "");
-  const j = judge as { id?: unknown; config?: { model?: unknown } } | null | undefined;
+  const j = judge as { id?: unknown; config?: { model?: unknown; effort?: unknown } } | null;
   const name = j?.config?.model ?? j?.id;
-  return typeof name === "string" ? name : "unknown";
+  if (typeof name !== "string") return "unknown";
+  // Only a bare Claude judge is wrapped with `effort`; a provider-qualified
+  // judge is wrapped with `reasoning_effort` and keeps its full ID.
+  return j?.config?.effort === undefined ? name : name.replace(/^anthropic:messages:/, "");
 }
 
 // The configuration a graded result ran with. Sidecars written before run
@@ -516,8 +520,9 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
   };
   const agent = r?.config?.providers?.[0]?.config;
   const judge = r?.config?.defaultTest?.options?.provider;
-  const judgeEffort = (judge as { config?: { reasoning_effort?: unknown } } | undefined)?.config
-    ?.reasoning_effort;
+  const judgeConfig = (judge as { config?: { reasoning_effort?: unknown; effort?: unknown } })
+    ?.config;
+  const judgeEffort = judgeConfig?.reasoning_effort ?? judgeConfig?.effort;
   return {
     agent_model: typeof agent?.model === "string" ? agent.model : `${harness}-default`,
     agent_effort: typeof agent?.effort === "string" ? agent.effort : null,

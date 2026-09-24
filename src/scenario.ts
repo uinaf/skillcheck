@@ -35,7 +35,7 @@ export interface RunOptions {
   agentModel?: string; // undefined on codex/grok = let that CLI pick its default
   agentEffort?: string; // claude agent leg only; undefined = Claude Code's default
   judgeModel: string; // bare Claude model, or a provider-qualified promptfoo id ("openai:chat:gpt-5.6-sol")
-  judgeEffort?: string; // reasoning_effort for a provider-qualified judge only
+  judgeEffort?: string; // Claude effort for a bare judge; reasoning_effort for a provider-qualified one
   maxTurns?: number; // claude agent leg only; default 50
   trials?: number; // independent agent runs per scenario; default 1
 }
@@ -308,17 +308,24 @@ export function buildConfig(
         // selection: with ANTHROPIC_API_KEY, the plain messages API;
         // without it, the agent SDK provider with local Claude Code session
         // auth. The SDK judge needs a forced verdict schema. String judges
-        // rely on promptfoo's own rubric JSON prompt.
+        // rely on promptfoo's own rubric JSON prompt. Both Claude paths take
+        // `effort`; the SDK one starts Claude Code with --effort.
         provider: opts.judgeModel.includes(":")
           ? opts.judgeEffort === undefined
             ? opts.judgeModel
             : { id: opts.judgeModel, config: { reasoning_effort: opts.judgeEffort } }
           : process.env.ANTHROPIC_API_KEY
-            ? `anthropic:messages:${opts.judgeModel}`
+            ? opts.judgeEffort === undefined
+              ? `anthropic:messages:${opts.judgeModel}`
+              : {
+                  id: `anthropic:messages:${opts.judgeModel}`,
+                  config: { effort: opts.judgeEffort },
+                }
             : {
                 id: "anthropic:claude-agent-sdk",
                 config: {
                   model: opts.judgeModel,
+                  ...(opts.judgeEffort ? { effort: opts.judgeEffort } : {}),
                   apiKeyRequired: false,
                   max_turns: 3,
                   output_format: {

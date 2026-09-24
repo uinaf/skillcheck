@@ -918,10 +918,13 @@ test("generateRun: a provider-qualified judge passes through, wrapped only for e
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("cli: --judge-effort is validated and needs a provider-qualified judge", () => {
-  const bareJudge = runCli(["run", "some-dir", "--judge-effort", "high"]);
-  assert.equal(bareJudge.rc, 1);
-  assert.match(bareJudge.stderr, /--judge-effort needs a provider-qualified --judge/);
+test("cli: --judge-effort is validated against the judge's own levels", () => {
+  const claudeLevel = runCli(["run", "some-dir", "--judge-effort", "minimal"]);
+  assert.equal(claudeLevel.rc, 1);
+  assert.match(
+    claudeLevel.stderr,
+    /--judge-effort for claude-opus-5 must be low, medium, high, xhigh, max, got minimal/,
+  );
 
   const badEffort = runCli([
     "run",
@@ -932,7 +935,7 @@ test("cli: --judge-effort is validated and needs a provider-qualified judge", ()
     "extreme",
   ]);
   assert.equal(badEffort.rc, 1);
-  assert.match(badEffort.stderr, /--judge-effort must be minimal, low, medium, or high/);
+  assert.match(badEffort.stderr, /must be minimal, low, medium, high, got extreme/);
 });
 
 test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () => {

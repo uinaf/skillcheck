@@ -520,3 +520,67 @@ syncBuiltinESMExports();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("generateRun: a Claude judge carries its effort on both Anthropic paths", () => {
+  const dir = tmp("judge-effort");
+  const saved = process.env.ANTHROPIC_API_KEY;
+  try {
+    const judgeOf = (opts: Partial<RunOptions>) =>
+      JSON.parse(fs.readFileSync(generate(dir, opts).configPath, "utf8")).defaultTest.options
+        .provider;
+    delete process.env.ANTHROPIC_API_KEY;
+    const sdk = judgeOf({ judgeModel: "claude-opus-5-5", judgeEffort: "high" });
+    assert.equal(sdk.id, "anthropic:claude-agent-sdk");
+    assert.equal(sdk.config.model, "claude-opus-5-5");
+    assert.equal(sdk.config.effort, "high");
+    assert.equal("effort" in judgeOf({ judgeModel: "claude-opus-5-5" }).config, false);
+
+    process.env.ANTHROPIC_API_KEY = "fixture";
+    assert.deepEqual(judgeOf({ judgeModel: "claude-opus-5-5", judgeEffort: "high" }), {
+      id: "anthropic:messages:claude-opus-5-5",
+      config: { effort: "high" },
+    });
+    assert.equal(judgeOf({ judgeModel: "claude-opus-5-5" }), "anthropic:messages:claude-opus-5-5");
+  } finally {
+    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("reduceResults: a Claude judge's effort is recovered from the result config", () => {
+  const dir = tmp("judge-effort-reduce");
+  try {
+    fs.writeFileSync(
+      path.join(dir, "demo--basic.json"),
+      JSON.stringify({
+        results: { results: [row(0.9, true)] },
+        config: {
+          providers: [{ config: { model: "claude-opus-5-5", effort: "medium" } }],
+          defaultTest: {
+            options: {
+              provider: { id: "anthropic:messages:claude-opus-5-5", config: { effort: "high" } },
+            },
+          },
+        },
+      }),
+    );
+    const [e] = reduceResults(dir, false).entries;
+    assert.deepEqual(
+      [e.agent_model, e.agent_effort, e.judge_model, e.judge_effort],
+      ["claude-opus-5-5", "medium", "claude-opus-5-5", "high"],
+    );
+
+    const qualified = {
+      id: "anthropic:messages:claude-opus-5-5",
+      config: { reasoning_effort: "high" },
+    };
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "demo--basic.json"), "utf8"));
+    raw.config.defaultTest.options.provider = qualified;
+    fs.writeFileSync(path.join(dir, "demo--basic.json"), JSON.stringify(raw));
+    const [q] = reduceResults(dir, false).entries;
+    assert.deepEqual([q.judge_model, q.judge_effort], [qualified.id, "high"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
