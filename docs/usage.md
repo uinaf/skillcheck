@@ -35,9 +35,10 @@ skillcheck run skills/<skill>/evals/<scenario>
 skillcheck run <scenario-dir> --agent MODEL --judge MODEL --harness codex
 skillcheck run <scenario-dir> --harness claude --max-turns 80
 skillcheck run <scenario-dir> --harness grok
+skillcheck run <scenario-dir> --trials 3 --agent-effort medium
 ```
 
-Materializes the scenario into `<root>/.skillcheck/scratch/<name>/workdir`,
+Materializes the scenario into `<root>/.skillcheck/scratch/<name>/trial-<n>/workdir`,
 installs the skill under test into that workdir, drives the agent, and grades
 the files it wrote. Exit 0 means pass, 1 means graded fail, and 2 means error.
 Exit 2 covers missing usable promptfoo output or optional eval peers. The
@@ -52,6 +53,42 @@ Defaults: `--harness claude`, agent `claude-opus-5`, judge `claude-opus-5`,
 and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
 Claude; passing it with `codex` or `grok` fails before the eval starts. On
 those harnesses, omitting `--agent` leaves the model to that CLI's own default.
+
+### Trials
+
+One trial is one sample of a noisy process: the same scenario and skill can
+score 0.49 and then 0.99. `--trials <k>` (default 1) runs the agent k times,
+each in its own workdir with its own manifest, all graded in one promptfoo eval.
+promptfoo's `--repeat` is not used because it reuses one set of vars and one
+`working_dir`, so concurrent trials would write into the same tree and each
+would be graded on all of their deliverables.
+
+A scenario's result aggregates its trials:
+
+| Field             | Meaning                                                            |
+| ----------------- | ------------------------------------------------------------------ |
+| `pass`            | pass^k: every trial passed. Exit 0 needs this                      |
+| `pass_rate`       | Fraction of trials that passed                                     |
+| `score`           | Mean weighted checklist score (the assert-set, without skill-used) |
+| `score_min`       | Lowest trial score                                                 |
+| `score_spread`    | Highest minus lowest trial score                                   |
+| `skill_used_rate` | Fraction of trials whose `skill-used` assertion passed             |
+| `noisy`           | Trials both passed and failed, or `score_spread` is at least 0.2   |
+
+A trial that errored was never graded, so one errored trial makes the whole
+scenario an ERROR: pass^k over fewer than k trials is not the requested number.
+With `--trials` above 1, `run` and `sweep` print min, spread, pass count,
+skill-used count, and `NOISY`.
+
+### Agent effort
+
+`--agent-effort low|medium|high|xhigh|max` sets the Claude agent's effort.
+promptfoo passes it to the Agent SDK, which starts Claude Code with `--effort`.
+Omitting it leaves Claude Code's default. Only `--harness claude` takes it;
+`codex` and `grok` fail before the eval starts. It is separate from
+`--judge-effort`.
+
+### Harnesses and judges
 
 `--harness grok` runs the locally installed Grok Build CLI in the disposable
 workdir with the skill under `.grok/skills/`. It uses native streaming events
@@ -86,7 +123,14 @@ order, sequentially. A scenario needs both `task.md` and `criteria.json` to be
 discovered. Exit 2 if anything errored, 1 if anything failed, else 0.
 
 `EVALS_CONCURRENCY` is passed to promptfoo as `-j` (default 4). It parallelizes
-within one scenario, not across them.
+the trials of one scenario, not separate scenarios. To spread scenarios, start
+several `skillcheck run` processes; each scenario has its own result, attempt
+marker, and scratch directory.
+
+A scenario is skipped only when its completed result was graded with the same
+run configuration: agent model, agent effort, judge model, judge effort, and
+trial count. A result from another configuration is rerun and reported as
+`RERUN`.
 
 One known failure mode: judge calls through a gateway can drop at the transport
 layer ([uinaf/zebroid-infra#44](https://github.com/uinaf/zebroid-infra/issues/44)).
@@ -102,7 +146,10 @@ skillcheck summarize [--allow-mixed]
 
 Reduces `<root>/.skillcheck/results/*.json` into
 `<root>/.skillcheck/scorecards/<UTC-date>.json`: one entry per scenario with
-skill, scenario, harness, tree sha, score, pass, both models, latency, tokens.
+skill, scenario, harness, tree sha, the trial aggregate from [trials](#trials),
+the run configuration, mean latency per trial, and tokens summed over trials.
+It then prints one row per skill and harness: scenarios, pass^k count, mean pass
+rate, mean score, and noisy count. Each noisy scenario follows on its own line.
 
 If a scorecard for today already exists, the two are merged on
 `(skill, scenario, harness)`: entries from this run win, entries it did not
@@ -139,13 +186,23 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
   "skill": "<skill directory name>",
   "scenario": "<scenario directory name>",
   "harness": "claude",
+  "agent_model": "claude-opus-5",
+  "agent_effort": "medium",
+  "judge_model": "claude-opus-5",
+  "judge_effort": null,
+  "trials": 3,
+  "aggregate": { "pass": false, "pass_rate": 0.6667, "score": 0.81, "...": "..." },
   "ran_at": "<ISO timestamp>",
   "tool_version": "<skillcheck version>"
 }
 ```
 
-`summarize` reads those sidecars and refuses to mix skills-tree revisions in one
-scorecard, including retained rows from partial reruns, unless `--allow-mixed`.
+`summarize` reads those sidecars and refuses to mix skills-tree revisions or
+run configurations (agent model and effort, judge model and effort, trials) in
+one scorecard, including retained rows from partial reruns, unless
+`--allow-mixed`. Configurations are compared within a harness, since harnesses
+differ by design. Sidecars written before run configurations were recorded fall
+back to the promptfoo config stored in the result.
 Rejection leaves the existing scorecard unchanged. With the override, the top-level `skills_tree_sha`
 becomes `mixed` and per-entry shas remain. A result with no sidecar reduces as
 `unattested`.
@@ -169,3 +226,10 @@ written inside the installed package.
 
 A bare `--judge` model stays on the Anthropic selection regardless of the
 agent harness; a provider-qualified `--judge` uses that provider's env instead.
+
+The Claude agent loads project settings only, so an `apiKeyHelper` or `env`
+block in the operator's `~/.claude/settings.json` never reaches it; the run
+fails with `Not logged in`. Export the gateway variables instead:
+`ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` set to the helper's output.
+Running from inside a Claude Code session also leaks that session's
+`CLAUDECODE` and `CLAUDE_CODE_*` variables into the agent; run from a plain shell.

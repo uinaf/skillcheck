@@ -28,12 +28,23 @@ export interface Scenario {
   criteria: Criteria;
 }
 
+export const DEFAULT_CLAUDE_AGENT = "claude-opus-5";
+
 export interface RunOptions {
   harness: Harness;
   agentModel?: string; // undefined on codex/grok = let that CLI pick its default
+  agentEffort?: string; // claude agent leg only; undefined = Claude Code's default
   judgeModel: string; // bare Claude model, or a provider-qualified promptfoo id ("openai:chat:gpt-5.6-sol")
   judgeEffort?: string; // reasoning_effort for a provider-qualified judge only
   maxTurns?: number; // claude agent leg only; default 50
+  trials?: number; // independent agent runs per scenario; default 1
+}
+
+// One agent run's isolated inputs. Trials never share a workdir: each one's
+// deliverables are graded against its own manifest.
+export interface TrialDir {
+  workdir: string;
+  manifestPath: string;
 }
 
 // Where generateRun writes scratch state and where it finds the transform it
@@ -251,7 +262,9 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
   return {
     id: "anthropic:claude-agent-sdk",
     config: {
-      model: opts.agentModel ?? "claude-opus-5",
+      model: opts.agentModel ?? DEFAULT_CLAUDE_AGENT,
+      // promptfoo hands this to the SDK, which spawns Claude Code with --effort.
+      ...(opts.agentEffort ? { effort: opts.agentEffort } : {}),
       // Without ANTHROPIC_API_KEY, fall back to the local Claude Code session
       // (documented promptfoo path for subscription auth).
       apiKeyRequired: false,
@@ -265,17 +278,27 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
   };
 }
 
+// Trials are k labeled providers, each bound to its own workdir, and k tests
+// filtered to one provider each. promptfoo's --repeat would reuse one vars set
+// and one working_dir, so concurrent trials would write into the same tree and
+// each would be graded on the union of their deliverables.
+export function trialLabel(index: number): string {
+  return `trial-${index + 1}`;
+}
+
 export function buildConfig(
   s: Scenario,
-  workdir: string,
-  manifestPath: string,
+  trials: TrialDir[],
   opts: RunOptions,
   paths: RunPaths,
 ): object {
   return {
     description: `${s.skill}/${s.scenario}`,
     prompts: ["{{task}}"],
-    providers: [agentProvider(opts, workdir, s.skill, paths)],
+    providers: trials.map((t, i) => ({
+      ...agentProvider(opts, t.workdir, s.skill, paths),
+      label: trialLabel(i),
+    })),
     defaultTest: {
       options: {
         // A provider-qualified judge ("openai:chat:gpt-5.6-sol") is handed to
@@ -316,26 +339,25 @@ export function buildConfig(
         transform: `file://${paths.transformPath}`,
       },
     },
-    tests: [
-      {
-        description: s.criteria.context,
-        vars: { task: s.prompt, workdir, manifest: manifestPath },
-        // Both the weighted checklist and the separate skill-used assertion
-        // must pass.
-        assert: [
-          {
-            type: "assert-set",
-            threshold: 0.7,
-            assert: s.criteria.checklist.map((item) => ({
-              type: "llm-rubric",
-              value: `${item.name}: ${item.description}`,
-              weight: item.max_score,
-            })),
-          },
-          { type: "skill-used", value: s.skill },
-        ],
-      },
-    ],
+    tests: trials.map((t, i) => ({
+      description: s.criteria.context,
+      providers: [trialLabel(i)],
+      vars: { task: s.prompt, workdir: t.workdir, manifest: t.manifestPath },
+      // Both the weighted checklist and the separate skill-used assertion
+      // must pass.
+      assert: [
+        {
+          type: "assert-set",
+          threshold: 0.7,
+          assert: s.criteria.checklist.map((item) => ({
+            type: "llm-rubric",
+            value: `${item.name}: ${item.description}`,
+            weight: item.max_score,
+          })),
+        },
+        { type: "skill-used", value: s.skill },
+      ],
+    })),
   };
 }
 
@@ -393,7 +415,10 @@ export function generateRun(
   const s = loadScenario(scenarioDir);
   const name = runNameFor(scenarioDir, opts.harness);
   const runDir = path.join(paths.scratchDir, name);
-  const { workdir, manifestPath } = materialize(s, runDir, opts.harness);
+  fs.rmSync(runDir, { recursive: true, force: true });
+  const trials = Array.from({ length: opts.trials ?? 1 }, (_, i) =>
+    materialize(s, path.join(runDir, trialLabel(i)), opts.harness),
+  );
 
   // promptfoo resolves provider SDKs from the generated config directory. The
   // link stays outside workdir, hidden from the agent and its manifest.
@@ -404,7 +429,7 @@ export function generateRun(
     fs.symlinkSync(sdkDir, link, "dir");
   }
 
-  const config = buildConfig(s, workdir, manifestPath, opts, paths);
+  const config = buildConfig(s, trials, opts, paths);
   const configPath = path.join(runDir, "promptfooconfig.json");
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   return { name, configPath, skill: s.skill, scenario: s.scenario };

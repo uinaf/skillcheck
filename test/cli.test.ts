@@ -10,13 +10,14 @@ import {
   classifyResult,
   mergeScorecard,
   parseArgs,
-  parseMaxTurns,
+  parsePositiveInt,
   reduceResults,
   resolveRoot,
   stateDirs,
   toolVersion,
   treeShaOf,
   type ScorecardEntry,
+  type Verdict,
 } from "../src/cli.ts";
 import {
   generateRun,
@@ -251,10 +252,18 @@ test("reduceResults: valid, malformed, and unattested results", () => {
     scenario: "scen-a",
     harness: "claude",
     skills_tree_sha: "sha1",
-    score: 0.9,
+    trials: 1,
     pass: true,
+    pass_rate: 1,
+    score: 0.9,
+    score_min: 0.9,
+    score_spread: 0,
+    skill_used_rate: null,
+    noisy: false,
     agent_model: "agent-model",
+    agent_effort: null,
     judge_model: "judge-model",
+    judge_effort: null,
     latency_ms: 1200,
     tokens: 140,
   });
@@ -425,12 +434,10 @@ test("reduceResults: empty directory", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("parseMaxTurns validates values", () => {
-  assert.equal(parseMaxTurns("80"), 80);
-  assert.throws(() => parseMaxTurns("abc"));
-  assert.throws(() => parseMaxTurns("-3"));
-  assert.throws(() => parseMaxTurns("Infinity"));
-  assert.throws(() => parseMaxTurns("2.5"));
+test("parsePositiveInt validates values", () => {
+  assert.equal(parsePositiveInt("--max-turns", "80"), 80);
+  for (const raw of ["abc", "-3", "0", "Infinity", "2.5"])
+    assert.throws(() => parsePositiveInt("--trials", raw), /--trials must be a positive integer/);
 });
 
 test("run and sweep reject --max-turns for harnesses without a turn limit", () => {
@@ -457,6 +464,10 @@ test("removed harnesses fail before an eval starts", () => {
   }
 });
 
+function errorOf(v: Verdict): string {
+  return "error" in v ? v.error : "";
+}
+
 test("classifyResult: an errored test is never a scored FAIL", () => {
   // Shape promptfoo writes when the provider blows up: 0 pass / 0 fail / 1 error.
   const errored = {
@@ -471,10 +482,7 @@ test("classifyResult: an errored test is never a scored FAIL", () => {
       stats: { successes: 0, failures: 0, errors: 1 },
     },
   };
-  const v = classifyResult(errored);
-  assert.equal(v.score, undefined);
-  assert.equal(v.pass, undefined);
-  assert.match(v.error ?? "", /could not be resolved/);
+  assert.match(errorOf(classifyResult(errored)), /could not be resolved/);
 });
 
 test("classifyResult: stats-only errors, missing results, and unusable scores", () => {
@@ -484,12 +492,12 @@ test("classifyResult: stats-only errors, missing results, and unusable scores", 
       stats: { successes: 0, failures: 0, errors: 1 },
     },
   };
-  assert.match(classifyResult(statsOnly).error ?? "", /nothing graded/);
+  assert.match(errorOf(classifyResult(statsOnly)), /nothing graded/);
 
-  assert.match(classifyResult({ results: { results: [] } }).error ?? "", /no result/);
-  assert.match(classifyResult(undefined).error ?? "", /no result/);
+  assert.match(errorOf(classifyResult({ results: { results: [] } })), /no result/);
+  assert.match(errorOf(classifyResult(undefined)), /no result/);
   assert.match(
-    classifyResult({ results: { results: [{ score: "nope", success: false }] } }).error ?? "",
+    errorOf(classifyResult({ results: { results: [{ score: "nope", success: false }] } })),
     /no usable score/,
   );
 });
@@ -503,13 +511,13 @@ test("classifyResult: a graded fail carrying the threshold reason is FAIL, not E
       stats: { successes: 0, failures: 1, errors: 0 },
     },
   };
-  assert.deepEqual(classifyResult(gradedFail), { score: 0.62, pass: false });
+  assert.deepEqual(classifyResult(gradedFail), { trials: [{ score: 0.62, pass: false }] });
 
   // Without stats to attest the grading, error text still wins.
   const noStats = {
     results: { results: [{ score: 0, success: false, error: "provider blew up" }] },
   };
-  assert.match(classifyResult(noStats).error ?? "", /provider blew up/);
+  assert.match(errorOf(classifyResult(noStats)), /provider blew up/);
 });
 
 test("classifyResult: graded verdicts still pass through untouched", () => {
@@ -519,20 +527,29 @@ test("classifyResult: graded verdicts still pass through untouched", () => {
       stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 },
     },
   });
-  assert.deepEqual(classifyResult(graded(0.91, true)), { score: 0.91, pass: true });
-  assert.deepEqual(classifyResult(graded(0, false)), { score: 0, pass: false });
+  assert.deepEqual(classifyResult(graded(0.91, true)), { trials: [{ score: 0.91, pass: true }] });
+  assert.deepEqual(classifyResult(graded(0, false)), { trials: [{ score: 0, pass: false }] });
 });
 
 function entry(skill: string, scenario: string, score: number, sha = "sha1"): ScorecardEntry {
+  const pass = score >= 0.7;
   return {
     skill,
     scenario,
     harness: "claude",
     skills_tree_sha: sha,
+    trials: 1,
+    pass,
+    pass_rate: pass ? 1 : 0,
     score,
-    pass: score >= 0.7,
+    score_min: score,
+    score_spread: 0,
+    skill_used_rate: null,
+    noisy: false,
     agent_model: "agent-model",
+    agent_effort: null,
     judge_model: "judge-model",
+    judge_effort: null,
     latency_ms: 1000,
     tokens: 100,
   };
@@ -794,8 +811,10 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
   );
 
   // The link must not leak into the graded workdir or the manifest.
-  assert.equal(fs.existsSync(path.join(runDir, "workdir", "node_modules")), false);
-  const manifest = JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+  assert.equal(fs.existsSync(path.join(runDir, "trial-1", "workdir", "node_modules")), false);
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(runDir, "trial-1", "manifest.json"), "utf8"),
+  );
   assert.deepEqual(
     Object.keys(manifest).filter((k) => k.includes("node_modules")),
     [],
@@ -822,7 +841,7 @@ test("generateRun: Grok installs the skill and uses its CLI provider", () => {
       },
     );
     assert.equal(name, "demo--basic--grok");
-    const workdir = path.join(path.dirname(configPath), "workdir");
+    const workdir = path.join(path.dirname(configPath), "trial-1", "workdir");
     assert.ok(fs.existsSync(path.join(workdir, ".grok", "skills", "demo", "SKILL.md")));
     assert.equal(fs.existsSync(path.join(workdir, ".grok", "skills", "demo", "evals")), false);
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
@@ -830,6 +849,7 @@ test("generateRun: Grok installs the skill and uses its CLI provider", () => {
       {
         id: `file://${grokProviderPath}`,
         config: { working_dir: workdir, skill: "demo" },
+        label: "trial-1",
       },
     ]);
     assert.deepEqual(config.tests[0].assert[1], { type: "skill-used", value: "demo" });

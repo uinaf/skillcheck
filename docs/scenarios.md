@@ -54,7 +54,9 @@ item needs a non-empty `name` and `description` and a positive `max_score`.
 Each item becomes one `llm-rubric` assertion weighted by `max_score`, inside an
 assert-set with threshold 0.7. A separate `skill-used` assertion sits outside
 that aggregate, so a run that produces good output without ever loading the
-skill still fails. There is no test-level threshold: both must pass.
+skill still fails. There is no test-level threshold: both must pass. The
+reported score is the assert-set's weighted score; skill-used is reported
+separately as a rate across trials.
 
 Write descriptions a judge can check against the deliverable: an observable
 property, not a feeling. Weight the items that would make a reviewer reject the
