@@ -361,32 +361,37 @@ process.exit(1);
   return { calls, config, result: JSON.parse(fs.readFileSync(out, "utf8")) };
 }
 
-test("agent effort reaches the spawned Claude Code process of every trial", () => {
-  const dir = tmp("effort-spawn");
-  try {
-    const { calls, config, result } = spawnedAgents(dir, { trials: 2, agentEffort: "low" });
-    assert.equal(calls.length, 2);
-    for (const { argv } of calls) assert.equal(argv[argv.indexOf("--effort") + 1], "low");
-    assert.deepEqual(
-      calls.map((c) => fs.realpathSync(c.cwd)).sort(),
-      config.providers.map((p: { config: { working_dir: string } }) =>
-        fs.realpathSync(p.config.working_dir),
-      ),
-      "each trial's agent runs in its own workdir",
-    );
-    // A dead agent is an errored trial, never a graded FAIL.
-    assert.match(
-      (classifyResult(result) as { error: string }).error,
-      /^trial \d: .*Claude Code process exited/,
-    );
+// Two real promptfoo evals: seconds locally, longer on a cold CI runner.
+test(
+  "agent effort reaches the spawned Claude Code process of every trial",
+  { timeout: 60_000 },
+  () => {
+    const dir = tmp("effort-spawn");
+    try {
+      const { calls, config, result } = spawnedAgents(dir, { trials: 2, agentEffort: "low" });
+      assert.equal(calls.length, 2);
+      for (const { argv } of calls) assert.equal(argv[argv.indexOf("--effort") + 1], "low");
+      assert.deepEqual(
+        calls.map((c) => fs.realpathSync(c.cwd)).sort(),
+        config.providers.map((p: { config: { working_dir: string } }) =>
+          fs.realpathSync(p.config.working_dir),
+        ),
+        "each trial's agent runs in its own workdir",
+      );
+      // A dead agent is an errored trial, never a graded FAIL.
+      assert.match(
+        (classifyResult(result) as { error: string }).error,
+        /^trial \d: .*Claude Code process exited/,
+      );
 
-    const plain = spawnedAgents(tmp("effort-default"), {});
-    assert.equal(plain.calls.length, 1);
-    assert.equal(plain.calls[0].argv.includes("--effort"), false);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+      const plain = spawnedAgents(tmp("effort-default"), {});
+      assert.equal(plain.calls.length, 1);
+      assert.equal(plain.calls[0].argv.includes("--effort"), false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
 
 function gitRoot(): string {
   const root = tmp("summary-config");
