@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintSkills } from "./lint.ts";
 import {
+  DEFAULT_CLAUDE_AGENT,
   encodeRunNamePart,
   generateRun,
   requiredEvalPackages,
@@ -27,12 +28,14 @@ export function toolVersion(): string {
   return JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8")).version;
 }
 
-export function parseMaxTurns(raw: string): number {
+export function parsePositiveInt(flag: string, raw: string): number {
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0)
-    throw new Error(`--max-turns must be a positive integer, got ${JSON.stringify(raw)}`);
+    throw new Error(`${flag} must be a positive integer, got ${JSON.stringify(raw)}`);
   return n;
 }
+
+const AGENT_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 function fail(msg: string): never {
   console.error(msg);
@@ -51,8 +54,10 @@ export function parseArgs(argv: string[]): {
     "--agent",
     "--judge",
     "--judge-effort",
+    "--agent-effort",
     "--harness",
     "--max-turns",
+    "--trials",
   ]);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -88,20 +93,29 @@ export function stateDirs(root: string): { results: string; scratch: string; sco
   };
 }
 
-function runOptions(flags: Map<string, string | true>): RunOptions {
+export function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
   if (harness !== "claude" && harness !== "codex" && harness !== "grok")
-    fail(`--harness must be claude, codex, or grok, got ${harness}`);
+    throw new Error(`--harness must be claude, codex, or grok, got ${harness}`);
   if (flags.has("--max-turns") && harness !== "claude")
-    fail("--max-turns is only supported with --harness claude");
+    throw new Error("--max-turns is only supported with --harness claude");
+  const agentEffort = flags.get("--agent-effort") as string | undefined;
+  if (agentEffort !== undefined) {
+    if (harness !== "claude")
+      throw new Error(
+        `--agent-effort is only supported with --harness claude; ${harness} has no effort setting wired`,
+      );
+    if (!AGENT_EFFORTS.includes(agentEffort))
+      throw new Error(`--agent-effort must be ${AGENT_EFFORTS.join(", ")}, got ${agentEffort}`);
+  }
   const agent = flags.get("--agent") as string | undefined;
   const judgeModel = (flags.get("--judge") as string | undefined) ?? "claude-opus-5";
   const judgeEffort = flags.get("--judge-effort") as string | undefined;
   if (judgeEffort !== undefined) {
     if (!["minimal", "low", "medium", "high"].includes(judgeEffort))
-      fail(`--judge-effort must be minimal, low, medium, or high, got ${judgeEffort}`);
+      throw new Error(`--judge-effort must be minimal, low, medium, or high, got ${judgeEffort}`);
     if (!judgeModel.includes(":"))
-      fail(
+      throw new Error(
         "--judge-effort needs a provider-qualified --judge (e.g. openai:chat:gpt-5.6-sol); the Anthropic judge does not take a reasoning effort",
       );
   }
@@ -109,12 +123,76 @@ function runOptions(flags: Map<string, string | true>): RunOptions {
     harness: harness as Harness,
     // claude defaults in scenario.ts; codex/grok undefined = that CLI's default
     agentModel: agent,
+    agentEffort,
     judgeModel,
     judgeEffort,
     maxTurns: flags.has("--max-turns")
-      ? parseMaxTurns(flags.get("--max-turns") as string)
+      ? parsePositiveInt("--max-turns", flags.get("--max-turns") as string)
       : undefined,
+    trials: flags.has("--trials")
+      ? parsePositiveInt("--trials", flags.get("--trials") as string)
+      : 1,
   };
+}
+
+// What a result was measured with. Scores from different configurations are
+// not comparable, so sweep reruns on a change and summarize refuses to merge.
+export interface RunConfig {
+  agent_model: string;
+  agent_effort: string | null;
+  judge_model: string;
+  judge_effort: string | null;
+  trials: number;
+}
+
+export function runConfigOf(opts: RunOptions): RunConfig {
+  return {
+    agent_model:
+      opts.agentModel ??
+      (opts.harness === "claude" ? DEFAULT_CLAUDE_AGENT : `${opts.harness}-default`),
+    agent_effort: opts.agentEffort ?? null,
+    judge_model: opts.judgeModel,
+    judge_effort: opts.judgeEffort ?? null,
+    trials: opts.trials ?? 1,
+  };
+}
+
+// Entries and sidecars written before run configs were recorded lack the
+// effort and trial fields; they ran at the defaults.
+function configKey(c: Partial<RunConfig>): string {
+  return JSON.stringify([
+    c.agent_model,
+    c.agent_effort ?? null,
+    c.judge_model,
+    c.judge_effort ?? null,
+    c.trials ?? 1,
+  ]);
+}
+
+function describeConfig(c: Partial<RunConfig>): string {
+  const effort = (e: string | null | undefined) => (e ? `@${e}` : "");
+  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}`;
+}
+
+// Throws when rows of one harness were measured with different configurations.
+// Harnesses legitimately differ from each other, so they are compared apart.
+export function assertUniformConfig(
+  entries: (Partial<RunConfig> & { harness: string })[],
+  allowMixed: boolean,
+): void {
+  if (allowMixed) return;
+  const byHarness = new Map<string, Map<string, Partial<RunConfig>>>();
+  for (const e of entries) {
+    const configs = byHarness.get(e.harness) ?? new Map<string, Partial<RunConfig>>();
+    configs.set(configKey(e), e);
+    byHarness.set(e.harness, configs);
+  }
+  for (const [harness, configs] of byHarness) {
+    if (configs.size > 1)
+      throw new Error(
+        `${harness} results span multiple run configurations (${[...configs.values()].map(describeConfig).join("; ")}); rerun them to match or pass --allow-mixed`,
+      );
+  }
 }
 
 // The eval engine and provider SDKs are optional peers so a lint-only install
@@ -159,48 +237,89 @@ interface RunOutcome {
   name: string;
   rc: number;
   resultPath: string;
-  score?: number;
-  pass?: boolean;
+  stats?: TrialStats;
   error?: string;
 }
 
-export interface Verdict {
-  score?: number;
-  pass?: boolean;
-  error?: string;
+export interface Trial {
+  score: number; // the weighted checklist score
+  pass: boolean; // the checklist met its threshold and the skill was used
+  skillUsed: boolean;
 }
+
+export type Verdict = { trials: Trial[] } | { error: string };
+
+interface Stats {
+  successes?: number;
+  failures?: number;
+  errors?: number;
+}
+
+interface Component {
+  score?: unknown;
+  pass?: unknown;
+  assertion?: { type?: unknown } | null;
+  metadata?: { assertionSet?: { type?: unknown } } | null;
+}
+
+// promptfoo's ResultFailureReason: NONE, ASSERT, ERROR.
+const GRADED_REASONS = new Set([0, 1]);
+const ERRORED_REASON = 2;
 
 // A promptfoo test that errored was never graded. It carries an `error` and
 // lands in stats.errors with nothing scored. Reporting that as score=0 FAIL
 // would let a transport or resolution failure masquerade as a judge's verdict,
-// so an errored result stays an ERROR and exits 2 per the documented contract.
-export function classifyResult(raw: unknown): Verdict {
-  const root = raw as
+// so an errored trial stays an ERROR and exits 2 per the documented contract.
+// One errored trial errors the scenario: pass^k over fewer than k trials is
+// not the number that was asked for.
+export function classifyResult(raw: unknown, expectedTrials?: number): Verdict {
+  const root = raw as { results?: { results?: unknown; stats?: Stats | null } } | undefined;
+  const rows = root?.results?.results;
+  if (!Array.isArray(rows) || rows.length === 0)
+    return { error: "promptfoo output carried no result" };
+  if (expectedTrials !== undefined && rows.length !== expectedTrials)
+    return { error: `promptfoo returned ${rows.length} of ${expectedTrials} trials` };
+  // Stats total every row, so they can only attest a single-row result.
+  const stats = rows.length === 1 ? (root?.results?.stats ?? undefined) : undefined;
+  const trials: Trial[] = [];
+  for (const [i, row] of rows.entries()) {
+    const verdict = classifyRow(row, stats);
+    if ("error" in verdict)
+      return { error: rows.length === 1 ? verdict.error : `trial ${i + 1}: ${verdict.error}` };
+    trials.push(verdict);
+  }
+  return { trials };
+}
+
+function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: string } {
+  const res = raw as
     | {
-        results?: {
-          results?: unknown[];
-          stats?: { successes?: number; failures?: number; errors?: number };
-        };
+        error?: unknown;
+        score?: unknown;
+        success?: unknown;
+        failureReason?: unknown;
+        gradingResult?: { componentResults?: unknown } | null;
       }
-    | undefined;
-  const res = root?.results?.results?.[0] as
-    | { error?: unknown; score?: unknown; success?: unknown }
+    | null
     | undefined;
   if (res === undefined || res === null) return { error: "promptfoo output carried no result" };
 
   const message = typeof res.error === "string" ? res.error.trim() : "";
-  const stats = root?.results?.stats ?? undefined;
+  if (res.failureReason === ERRORED_REASON)
+    return { error: message || "promptfoo reported an errored test" };
   // promptfoo also copies a failed assert-set's threshold reason into the
-  // result's error field while stats still count the test as a graded
-  // failure (failures > 0, errors = 0). That is a judge's verdict, not a
-  // transport error, so the grading evidence wins over the error text.
-  const gradedByStats =
-    stats !== undefined &&
-    (stats.errors ?? 0) === 0 &&
-    ((stats.failures ?? 0) > 0 || (stats.successes ?? 0) > 0);
-  if (message !== "" && !gradedByStats) return { error: message };
+  // result's error field while the test counts as a graded failure. That is a
+  // judge's verdict, not a transport error, so the grading evidence wins over
+  // the error text. Results without a failure reason fall back to the stats.
+  const graded =
+    GRADED_REASONS.has(res.failureReason as number) ||
+    (stats !== undefined &&
+      (stats.errors ?? 0) === 0 &&
+      ((stats.failures ?? 0) > 0 || (stats.successes ?? 0) > 0));
+  if (message !== "" && !graded) return { error: message };
 
   if (
+    !graded &&
     stats !== undefined &&
     (stats.errors ?? 0) > 0 &&
     (stats.successes ?? 0) === 0 &&
@@ -211,7 +330,73 @@ export function classifyResult(raw: unknown): Verdict {
   if (typeof res.score !== "number" || typeof res.success !== "boolean") {
     return { error: "promptfoo result carried no usable score" };
   }
-  return { score: res.score, pass: res.success };
+  // promptfoo's row score averages the checklist with the skill-used
+  // assertion, so both are read from their own components. A row without
+  // them was not graded against this harness's assertions.
+  const components = Array.isArray(res.gradingResult?.componentResults)
+    ? (res.gradingResult.componentResults as (Component | null)[])
+    : [];
+  const checklist = components.find((c) => c?.metadata?.assertionSet?.type === "assert-set");
+  const skillUsed = components.find((c) => c?.assertion?.type === "skill-used");
+  if (typeof checklist?.score !== "number" || typeof skillUsed?.pass !== "boolean") {
+    return { error: "promptfoo result carried no checklist or skill-used verdict" };
+  }
+  return { score: checklist.score, pass: res.success, skillUsed: skillUsed.pass };
+}
+
+// Spread at or above this, or a mix of passes and fails, marks a scenario
+// whose single-trial verdict could have gone either way.
+export const NOISY_SPREAD = 0.2;
+
+export interface TrialStats {
+  trials: number;
+  pass: boolean; // pass^k: every trial passed
+  passes: number;
+  pass_rate: number;
+  score: number; // mean weighted checklist score
+  score_min: number;
+  score_spread: number; // max - min
+  skill_used: number; // trials whose skill-used assertion passed
+  skill_used_rate: number;
+  noisy: boolean;
+}
+
+const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
+
+export function aggregateTrials(trials: Trial[]): TrialStats {
+  if (trials.length === 0) throw new Error("cannot aggregate zero trials");
+  const scores = trials.map((t) => t.score);
+  const passes = trials.filter((t) => t.pass).length;
+  const min = Math.min(...scores);
+  const spread = Math.max(...scores) - min;
+  const skillUsed = trials.filter((t) => t.skillUsed).length;
+  return {
+    trials: trials.length,
+    pass: passes === trials.length,
+    passes,
+    pass_rate: round4(passes / trials.length),
+    score: round4(scores.reduce((a, b) => a + b, 0) / trials.length),
+    score_min: round4(min),
+    score_spread: round4(spread),
+    skill_used: skillUsed,
+    skill_used_rate: round4(skillUsed / trials.length),
+    // Tolerance only absorbs float error: 0.7 - 0.5 is 0.19999999999999996.
+    noisy: (passes > 0 && passes < trials.length) || spread >= NOISY_SPREAD - 1e-9,
+  };
+}
+
+export function formatStats(s: TrialStats): string {
+  const line = `score=${s.score.toFixed(4)}`;
+  if (s.trials === 1) return line;
+  return [
+    line,
+    `min=${s.score_min.toFixed(4)}`,
+    `spread=${s.score_spread.toFixed(4)}`,
+    `pass^${s.trials}=${s.pass ? "yes" : "no"}`,
+    `passes=${s.passes}/${s.trials}`,
+    `skill-used=${s.skill_used}/${s.trials}`,
+    ...(s.noisy ? ["NOISY"] : []),
+  ].join(" ");
 }
 
 function gitHead(root: string): string {
@@ -271,33 +456,83 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
 
   let verdict: Verdict;
   try {
-    verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")));
+    verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")), opts.trials ?? 1);
   } catch {
     verdict = { error: "promptfoo produced no parseable result file" };
   }
-  outcome.score = verdict.score;
-  outcome.pass = verdict.pass;
-  outcome.error = verdict.error;
+  if ("error" in verdict) return { ...outcome, error: verdict.error };
+  outcome.stats = aggregateTrials(verdict.trials);
 
   // Provenance is only written for a graded result: an errored run has nothing
   // to attest, and a sidecar without a score would poison the scorecard.
-  if (verdict.score !== undefined) {
-    fs.writeFileSync(
-      metaPath(resultPath),
-      JSON.stringify(
-        {
-          skills_tree_sha: sha,
-          ...identity,
-          ran_at: new Date().toISOString(),
-          tool_version: toolVersion(),
-        },
-        null,
-        2,
-      ) + "\n",
-    );
-    fs.rmSync(attemptPath(resultPath), { force: true });
-  }
+  fs.writeFileSync(
+    metaPath(resultPath),
+    JSON.stringify(
+      {
+        skills_tree_sha: sha,
+        ...identity,
+        ...runConfigOf(opts),
+        aggregate: outcome.stats,
+        ran_at: new Date().toISOString(),
+        tool_version: toolVersion(),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+  fs.rmSync(attemptPath(resultPath), { force: true });
   return outcome;
+}
+
+function judgeName(judge: unknown): string {
+  // Provider-qualified judge IDs are recorded verbatim. Bare Anthropic IDs
+  // lose their provider prefix; SDK judge objects carry the model in config,
+  // while wrapped providers carry it in id.
+  if (typeof judge === "string") return judge.replace(/^anthropic:messages:/, "");
+  const j = judge as { id?: unknown; config?: { model?: unknown } } | null | undefined;
+  const name = j?.config?.model ?? j?.id;
+  return typeof name === "string" ? name : "unknown";
+}
+
+// The configuration a graded result ran with. Sidecars written before run
+// configs were recorded fall back to the promptfoo config inside the result.
+export function resultRunConfig(raw: unknown, meta: unknown, harness: string): RunConfig {
+  const m = meta as Partial<RunConfig> | null | undefined;
+  if (typeof m?.agent_model === "string" && typeof m.judge_model === "string") {
+    return {
+      agent_model: m.agent_model,
+      agent_effort: m.agent_effort ?? null,
+      judge_model: m.judge_model,
+      judge_effort: m.judge_effort ?? null,
+      trials: m.trials ?? 1,
+    };
+  }
+  const r = raw as {
+    config?: {
+      providers?: { config?: { model?: unknown; effort?: unknown } }[];
+      defaultTest?: { options?: { provider?: unknown } };
+    };
+    results?: { results?: unknown[] };
+  };
+  const agent = r?.config?.providers?.[0]?.config;
+  const judge = r?.config?.defaultTest?.options?.provider;
+  const judgeEffort = (judge as { config?: { reasoning_effort?: unknown } } | undefined)?.config
+    ?.reasoning_effort;
+  return {
+    agent_model: typeof agent?.model === "string" ? agent.model : `${harness}-default`,
+    agent_effort: typeof agent?.effort === "string" ? agent.effort : null,
+    judge_model: judgeName(judge),
+    judge_effort: typeof judgeEffort === "string" ? judgeEffort : null,
+    trials: r?.results?.results?.length ?? 1,
+  };
+}
+
+function readJson(file: string): unknown {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
 }
 
 function discoverScenarios(root: string): string[] {
@@ -329,33 +564,34 @@ function discoverScenarios(root: string): string[] {
   return found.sort();
 }
 
+const RUN_FLAGS =
+  "[--root DIR] [--harness claude|codex|grok] [--agent MODEL] [--agent-effort EFFORT] [--judge MODEL] [--judge-effort EFFORT] [--trials K] [--max-turns N]";
+
 function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length !== 1)
-    fail(
-      "usage: skillcheck run <scenario-dir> [--root DIR] [--agent MODEL] [--judge MODEL] [--judge-effort EFFORT] [--harness claude|codex|grok]",
-    );
+  if (positional.length !== 1) fail(`usage: skillcheck run <scenario-dir> ${RUN_FLAGS}`);
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
   const o = runScenario(positional[0], opts, resolveRoot(flags));
-  if (o.score === undefined) {
+  if (o.stats === undefined) {
     console.error(`ERROR ${o.name}: ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
     process.exit(2);
   }
   console.log(
-    `${o.pass ? "PASS" : "FAIL"} ${o.name} score=${o.score.toFixed(4)} (results: ${o.resultPath})`,
+    `${o.stats.pass ? "PASS" : "FAIL"} ${o.name} ${formatStats(o.stats)} (results: ${o.resultPath})`,
   );
-  process.exit(o.pass ? 0 : 1);
+  process.exit(o.stats.pass ? 0 : 1);
 }
 
 function cmdSweep(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length > 0) fail("usage: skillcheck sweep [--root DIR] [--all]");
+  if (positional.length > 0) fail(`usage: skillcheck sweep ${RUN_FLAGS} [--all]`);
   const root = resolveRoot(flags);
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
   const all = flags.get("--all") === true;
   const resultsDir = stateDirs(root).results;
+  const wanted = configKey(runConfigOf(opts));
   let passed = 0,
     failed = 0,
     errored = 0,
@@ -364,27 +600,28 @@ function cmdSweep(argv: string[]): void {
     const name = runNameFor(dir, opts.harness);
     const resultPath = path.join(resultsDir, `${name}.json`);
     if (!all && fs.existsSync(resultPath) && !fs.existsSync(attemptPath(resultPath))) {
-      try {
-        const verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")));
-        if (verdict.score !== undefined) {
-          skipped++;
-          console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
-          continue;
-        }
-      } catch {
-        // A malformed legacy result is incomplete and must be rerun.
+      // A malformed legacy result is incomplete and must be rerun, and so is
+      // one measured with a different configuration.
+      const raw = readJson(resultPath);
+      const config = resultRunConfig(raw, readJson(metaPath(resultPath)), opts.harness);
+      const graded = !("error" in classifyResult(raw, config.trials));
+      if (graded && configKey(config) === wanted) {
+        skipped++;
+        console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
+        continue;
       }
+      if (graded) console.log(`RERUN ${name} (results used ${describeConfig(config)})`);
     }
     const o = runScenario(dir, opts, root);
-    if (o.score === undefined) {
+    if (o.stats === undefined) {
       errored++;
       console.log(`ERROR ${o.name} ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
-    } else if (o.pass) {
+    } else if (o.stats.pass) {
       passed++;
-      console.log(`PASS  ${o.name} score=${o.score.toFixed(4)}`);
+      console.log(`PASS  ${o.name} ${formatStats(o.stats)}`);
     } else {
       failed++;
-      console.log(`FAIL  ${o.name} score=${o.score.toFixed(4)}`);
+      console.log(`FAIL  ${o.name} ${formatStats(o.stats)}`);
     }
   }
   console.log(
@@ -393,17 +630,13 @@ function cmdSweep(argv: string[]): void {
   process.exit(errored > 0 ? 2 : failed > 0 ? 1 : 0);
 }
 
-export interface ScorecardEntry {
+export interface ScorecardEntry extends TrialStats, RunConfig {
   skill: string;
   scenario: string;
   harness: Harness | "cursor";
   skills_tree_sha: string;
-  score: number;
-  pass: boolean;
-  agent_model: string;
-  judge_model: string;
-  latency_ms: number;
-  tokens: number;
+  latency_ms: number; // mean per trial
+  tokens: number; // agent and judge, summed over trials
 }
 
 function resultIdentity(
@@ -449,6 +682,11 @@ function resultIdentity(
   return { skill: decode(skill), scenario: decode(rest.join("--")), harness };
 }
 
+interface Usage {
+  total?: number;
+  assertions?: { total?: number };
+}
+
 // Pure reducer over a results directory. Skips files that are not promptfoo
 // results (warns to stderr, reported in `skipped`); throws on mixed
 // skills-tree revisions unless allowMixed.
@@ -481,51 +719,39 @@ export function reduceResults(
       skipped.push(f);
       continue;
     }
-    let raw;
-    try {
-      raw = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
-    } catch {
-      raw = undefined;
-    }
-    const res = raw?.results?.results?.[0];
-    const verdict = classifyResult(raw);
-    if (verdict.score === undefined || verdict.pass === undefined) {
+    const raw = readJson(path.join(dir, f));
+    const base = f.replace(/\.json$/, "");
+    const meta = readJson(path.join(dir, `${base}.meta.json`)) as
+      | { skills_tree_sha?: unknown }
+      | undefined;
+    const { skill, scenario, harness } = resultIdentity(f, dir);
+    const config = resultRunConfig(raw, meta, harness);
+    const verdict = classifyResult(raw, config.trials);
+    if ("error" in verdict) {
       console.error(`skipping ${f}: ${verdict.error}`);
       skipped.push(f);
       continue;
     }
-    const provider = raw.config?.providers?.[0];
-    const judge = raw.config?.defaultTest?.options?.provider;
-    const base = f.replace(/\.json$/, "");
-    const { skill, scenario, harness } = resultIdentity(f, dir);
+    const rows = (raw as { results: { results: { latencyMs?: number; tokenUsage?: Usage }[] } })
+      .results.results;
     const key = entryKey({ skill, scenario, harness });
     gradedAt.set(key, Math.max(gradedAt.get(key) ?? 0, fs.statSync(path.join(dir, f)).mtimeMs));
-    let sha = "unattested";
-    try {
-      sha =
-        JSON.parse(fs.readFileSync(path.join(dir, `${base}.meta.json`), "utf8")).skills_tree_sha ??
-        "unattested";
-    } catch {
-      // Missing or malformed sidecars are unattested.
-    }
+    // Missing or malformed sidecars are unattested.
+    const sha = typeof meta?.skills_tree_sha === "string" ? meta.skills_tree_sha : "unattested";
     shas.add(sha);
+    const stats = aggregateTrials(verdict.trials);
     entries.push({
       skill,
       scenario,
       harness,
       skills_tree_sha: sha,
-      score: verdict.score,
-      pass: verdict.pass,
-      agent_model: provider?.config?.model ?? `${harness}-default`,
-      // Provider-qualified judge IDs are recorded verbatim. Bare Anthropic IDs
-      // lose their provider prefix; SDK judge objects carry the model in
-      // config, while wrapped providers carry it in id.
-      judge_model:
-        typeof judge === "string"
-          ? judge.replace(/^anthropic:messages:/, "")
-          : (judge?.config?.model ?? judge?.id ?? "unknown"),
-      latency_ms: res.latencyMs,
-      tokens: (res.tokenUsage?.total ?? 0) + (res.tokenUsage?.assertions?.total ?? 0),
+      ...stats,
+      ...config,
+      latency_ms: Math.round(rows.reduce((a, r) => a + (r.latencyMs ?? 0), 0) / rows.length),
+      tokens: rows.reduce(
+        (a, r) => a + (r.tokenUsage?.total ?? 0) + (r.tokenUsage?.assertions?.total ?? 0),
+        0,
+      ),
     });
   }
   if (shas.size > 1 && !allowMixed) {
@@ -617,11 +843,13 @@ function cmdSummarize(argv: string[]): void {
   }
   const merged = mergeScorecard(existing, entries);
   const treeSha = treeShaOf(merged.entries);
-  if (treeSha === "mixed" && flags.get("--allow-mixed") !== true) {
+  const allowMixed = flags.get("--allow-mixed") === true;
+  if (treeSha === "mixed" && !allowMixed) {
     throw new Error(
       "scorecard spans multiple skills-tree revisions; rerun stale ones or pass --allow-mixed",
     );
   }
+  assertUniformConfig(merged.entries, allowMixed);
   const scorecard = {
     ran_at: new Date().toISOString(),
     skills_tree_sha: treeSha,
@@ -636,6 +864,64 @@ function cmdSummarize(argv: string[]): void {
       `merged into today's scorecard: ${entries.length} from this run, ${merged.carried} carried over`,
     );
   }
+  console.log(`\n${formatSkillTable(summarizeSkills(merged.entries))}`);
+  for (const e of merged.entries.filter((x) => x.noisy)) {
+    console.log(`NOISY ${e.skill}/${e.scenario} (${e.harness}) ${formatStats(e)}`);
+  }
+}
+
+export interface SkillSummary {
+  skill: string;
+  harness: string;
+  scenarios: number;
+  pass_all: number; // scenarios whose every trial passed
+  pass_rate: number; // mean over scenarios
+  score: number; // mean over scenarios
+  noisy: string[];
+}
+
+// Scenarios weigh equally; rows from an older scorecard without trial fields
+// count as one trial.
+export function summarizeSkills(entries: ScorecardEntry[]): SkillSummary[] {
+  const groups = new Map<string, ScorecardEntry[]>();
+  for (const e of entries) {
+    const key = `${e.skill}\0${e.harness}`;
+    groups.set(key, [...(groups.get(key) ?? []), e]);
+  }
+  const mean = (xs: number[]) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
+  return [...groups.values()].map((rows) => ({
+    skill: rows[0].skill,
+    harness: rows[0].harness,
+    scenarios: rows.length,
+    pass_all: rows.filter((r) => r.pass).length,
+    pass_rate: mean(rows.map((r) => r.pass_rate ?? (r.pass ? 1 : 0))),
+    score: mean(rows.map((r) => r.score)),
+    noisy: rows.filter((r) => r.noisy).map((r) => r.scenario),
+  }));
+}
+
+function formatSkillTable(rows: SkillSummary[]): string {
+  const table = [
+    ["skill", "harness", "scenarios", "pass^k", "pass rate", "score", "noisy"],
+    ...rows.map((r) => [
+      r.skill,
+      r.harness,
+      String(r.scenarios),
+      `${r.pass_all}/${r.scenarios}`,
+      r.pass_rate.toFixed(2),
+      r.score.toFixed(2),
+      String(r.noisy.length),
+    ]),
+  ];
+  const widths = table[0].map((_, i) => Math.max(...table.map((row) => row[i].length)));
+  return table
+    .map((row) =>
+      row
+        .map((c, i) => c.padEnd(widths[i]))
+        .join("  ")
+        .trimEnd(),
+    )
+    .join("\n");
 }
 
 function cmdLint(argv: string[]): void {

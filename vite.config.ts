@@ -40,7 +40,7 @@ export default defineConfig({
         ...stableShell,
         cache: true,
         command:
-          "vp test run test/cli.test.ts test/grok-provider.test.ts test/release-commit.test.ts test/transform.test.ts",
+          "vp test run test/cli.test.ts test/grok-provider.test.ts test/release-commit.test.ts test/transform.test.ts test/trials.test.ts",
         dependsOn: ["pack"],
         input: [
           ...graphInputs,
@@ -51,6 +51,7 @@ export default defineConfig({
           "test/cli.test.ts",
           "test/grok-provider.test.ts",
           "test/transform.test.ts",
+          "test/trials.test.ts",
           "test/fixtures/**",
         ],
         output: [],

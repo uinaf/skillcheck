@@ -66,9 +66,11 @@ Commit `.skillcheck/scorecards/`. Gitignore the rest:
 .skillcheck/scratch/
 ```
 
-A scorecard is only comparable against the tree it graded, which is why every
-result carries the root repo's HEAD and `summarize` refuses to mix revisions
-without `--allow-mixed`.
+A scorecard is only comparable against the tree it graded and the configuration
+it ran with, which is why every result carries the root repo's HEAD, the agent
+and judge models and efforts, and the trial count, and why `summarize` refuses
+to mix them without `--allow-mixed`. Use `--trials 3` or more before calling a
+skill change better or worse; one trial cannot tell a regression from noise.
 
 ## Upgrading
 

@@ -28,7 +28,8 @@ pre-npm git tags are covered there too.
 ```sh
 skillcheck lint                              # structural lint, no credentials
 skillcheck run skills/wat/evals/basic        # one scenario, graded end to end
-skillcheck sweep && skillcheck summarize     # every scenario, then a scorecard
+skillcheck sweep --trials 3                  # every scenario, three trials each
+skillcheck summarize                         # per-scenario and per-skill scorecard
 ```
 
 `lint` needs nothing. `run` and `sweep` need model auth, which is why sweeps
