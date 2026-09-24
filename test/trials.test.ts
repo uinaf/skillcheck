@@ -81,10 +81,12 @@ test("aggregateTrials: pass^k, pass rate, mean, min, spread, skill-used rate", (
   assert.deepEqual(s, {
     trials: 3,
     pass: false,
+    passes: 1,
     pass_rate: 0.3333,
     score: 0.7933,
     score_min: 0.49,
     score_spread: 0.5,
+    skill_used: 2,
     skill_used_rate: 0.6667,
     noisy: true,
   });
@@ -96,16 +98,26 @@ test("aggregateTrials: noise is a pass/fail mix or a spread of at least 0.2", ()
   assert.equal(aggregateTrials([trial(0.72, true), trial(0.68, false)]).noisy, true);
   assert.equal(aggregateTrials([trial(0.5, false), trial(0.7, false)]).noisy, true);
   assert.equal(aggregateTrials([trial(0.5, false), trial(0.69, false)]).noisy, false);
+  // The threshold applies to the exact spread, not the stored rounding.
+  assert.equal(aggregateTrials([trial(0.5, false), trial(0.69996, false)]).noisy, false);
   assert.equal(aggregateTrials([trial(0.1, false)]).noisy, false);
   const stable = aggregateTrials([trial(0.9, true), trial(0.9, true), trial(0.9, true)]);
   assert.equal(stable.pass, true);
   assert.equal(stable.score_spread, 0);
-  assert.equal(aggregateTrials([{ score: 1, pass: true }]).skill_used_rate, null);
   assert.throws(() => aggregateTrials([]), /zero trials/);
 });
 
 test("formatStats: one trial keeps the single-score line, k trials show the spread", () => {
-  assert.equal(formatStats(aggregateTrials([{ score: 0.8, pass: true }])), "score=0.8000");
+  assert.equal(
+    formatStats(aggregateTrials([{ score: 0.8, pass: true, skillUsed: true }])),
+    "score=0.8000",
+  );
+  const many = Array.from({ length: 20_000 }, (_, i) => ({
+    score: 0.5,
+    pass: i === 0,
+    skillUsed: true,
+  }));
+  assert.match(formatStats(aggregateTrials(many)), /passes=1\/20000 skill-used=20000\/20000/);
   assert.equal(
     formatStats(
       aggregateTrials([
@@ -145,6 +157,13 @@ test("classifyResult: one errored trial errors the scenario and names the trial"
   assert.deepEqual(verdict, { error: "trial 2: rate limited (429)" });
 });
 
+test("classifyResult: missing trials or assertion components are errors, not grades", () => {
+  const three = { results: { results: [row(0.9, true), row(0.9, true)] } };
+  assert.deepEqual(classifyResult(three, 3), { error: "promptfoo returned 2 of 3 trials" });
+  const bare = { results: { results: [{ score: 0.9, success: true, failureReason: 0 }] } };
+  assert.match((classifyResult(bare) as { error: string }).error, /no checklist or skill-used/);
+});
+
 test("reduceResults: a k-trial result becomes one aggregated scorecard row", () => {
   const dir = tmp("reduce-trials");
   try {
@@ -174,10 +193,12 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
       skills_tree_sha: "sha1",
       trials: 3,
       pass: false,
+      passes: 2,
       pass_rate: 0.6667,
       score: 0.7667,
       score_min: 0.6,
       score_spread: 0.3,
+      skill_used: 3,
       skill_used_rate: 1,
       noisy: true,
       agent_model: "claude-opus-5-5",
@@ -193,7 +214,7 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
 });
 
 test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios", () => {
-  const base = aggregateTrials([{ score: 0.9, pass: true }]);
+  const base = aggregateTrials([{ score: 0.9, pass: true, skillUsed: true }]);
   const e = (skill: string, scenario: string, over: Partial<ScorecardEntry>): ScorecardEntry => ({
     skill,
     scenario,
@@ -462,7 +483,7 @@ test("sweep: skips a result from the same configuration and reruns a changed one
       fake,
       `import fs from "node:fs";
 const out = process.argv[process.argv.indexOf("-o") + 1];
-fs.writeFileSync(out, JSON.stringify({ results: { results: [{ score: 0.95, success: true }] } }));
+fs.writeFileSync(out, JSON.stringify({ results: { results: [${JSON.stringify(row(0.95, true))}] } }));
 `,
     );
     const preload = path.join(root, "preload.mjs");

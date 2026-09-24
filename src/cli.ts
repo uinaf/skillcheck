@@ -244,7 +244,7 @@ interface RunOutcome {
 export interface Trial {
   score: number; // the weighted checklist score
   pass: boolean; // the checklist met its threshold and the skill was used
-  skillUsed?: boolean;
+  skillUsed: boolean;
 }
 
 export type Verdict = { trials: Trial[] } | { error: string };
@@ -272,11 +272,13 @@ const ERRORED_REASON = 2;
 // so an errored trial stays an ERROR and exits 2 per the documented contract.
 // One errored trial errors the scenario: pass^k over fewer than k trials is
 // not the number that was asked for.
-export function classifyResult(raw: unknown): Verdict {
+export function classifyResult(raw: unknown, expectedTrials?: number): Verdict {
   const root = raw as { results?: { results?: unknown; stats?: Stats | null } } | undefined;
   const rows = root?.results?.results;
   if (!Array.isArray(rows) || rows.length === 0)
     return { error: "promptfoo output carried no result" };
+  if (expectedTrials !== undefined && rows.length !== expectedTrials)
+    return { error: `promptfoo returned ${rows.length} of ${expectedTrials} trials` };
   // Stats total every row, so they can only attest a single-row result.
   const stats = rows.length === 1 ? (root?.results?.stats ?? undefined) : undefined;
   const trials: Trial[] = [];
@@ -329,17 +331,17 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
     return { error: "promptfoo result carried no usable score" };
   }
   // promptfoo's row score averages the checklist with the skill-used
-  // assertion. The checklist's own score is the weighted rubric result.
+  // assertion, so both are read from their own components. A row without
+  // them was not graded against this harness's assertions.
   const components = Array.isArray(res.gradingResult?.componentResults)
     ? (res.gradingResult.componentResults as (Component | null)[])
     : [];
   const checklist = components.find((c) => c?.metadata?.assertionSet?.type === "assert-set");
   const skillUsed = components.find((c) => c?.assertion?.type === "skill-used");
-  return {
-    score: typeof checklist?.score === "number" ? checklist.score : res.score,
-    pass: res.success,
-    ...(typeof skillUsed?.pass === "boolean" ? { skillUsed: skillUsed.pass } : {}),
-  };
+  if (typeof checklist?.score !== "number" || typeof skillUsed?.pass !== "boolean") {
+    return { error: "promptfoo result carried no checklist or skill-used verdict" };
+  }
+  return { score: checklist.score, pass: res.success, skillUsed: skillUsed.pass };
 }
 
 // Spread at or above this, or a mix of passes and fails, marks a scenario
@@ -349,11 +351,13 @@ export const NOISY_SPREAD = 0.2;
 export interface TrialStats {
   trials: number;
   pass: boolean; // pass^k: every trial passed
+  passes: number;
   pass_rate: number;
   score: number; // mean weighted checklist score
   score_min: number;
   score_spread: number; // max - min
-  skill_used_rate: number | null; // null when no trial reported the assertion
+  skill_used: number; // trials whose skill-used assertion passed
+  skill_used_rate: number;
   noisy: boolean;
 }
 
@@ -365,33 +369,32 @@ export function aggregateTrials(trials: Trial[]): TrialStats {
   const passes = trials.filter((t) => t.pass).length;
   const min = Math.min(...scores);
   const spread = Math.max(...scores) - min;
-  const reported = trials.filter((t) => t.skillUsed !== undefined);
+  const skillUsed = trials.filter((t) => t.skillUsed).length;
   return {
     trials: trials.length,
     pass: passes === trials.length,
+    passes,
     pass_rate: round4(passes / trials.length),
     score: round4(scores.reduce((a, b) => a + b, 0) / trials.length),
     score_min: round4(min),
     score_spread: round4(spread),
-    skill_used_rate:
-      reported.length === 0
-        ? null
-        : round4(reported.filter((t) => t.skillUsed).length / reported.length),
-    noisy: (passes > 0 && passes < trials.length) || round4(spread) >= NOISY_SPREAD,
+    skill_used: skillUsed,
+    skill_used_rate: round4(skillUsed / trials.length),
+    // Tolerance only absorbs float error: 0.7 - 0.5 is 0.19999999999999996.
+    noisy: (passes > 0 && passes < trials.length) || spread >= NOISY_SPREAD - 1e-9,
   };
 }
 
 export function formatStats(s: TrialStats): string {
   const line = `score=${s.score.toFixed(4)}`;
   if (s.trials === 1) return line;
-  const of = (rate: number) => `${Math.round(rate * s.trials)}/${s.trials}`;
   return [
     line,
     `min=${s.score_min.toFixed(4)}`,
     `spread=${s.score_spread.toFixed(4)}`,
     `pass^${s.trials}=${s.pass ? "yes" : "no"}`,
-    `passes=${of(s.pass_rate)}`,
-    ...(s.skill_used_rate === null ? [] : [`skill-used=${of(s.skill_used_rate)}`]),
+    `passes=${s.passes}/${s.trials}`,
+    `skill-used=${s.skill_used}/${s.trials}`,
     ...(s.noisy ? ["NOISY"] : []),
   ].join(" ");
 }
@@ -453,7 +456,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
 
   let verdict: Verdict;
   try {
-    verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")));
+    verdict = classifyResult(JSON.parse(fs.readFileSync(resultPath, "utf8")), opts.trials ?? 1);
   } catch {
     verdict = { error: "promptfoo produced no parseable result file" };
   }
@@ -600,8 +603,8 @@ function cmdSweep(argv: string[]): void {
       // A malformed legacy result is incomplete and must be rerun, and so is
       // one measured with a different configuration.
       const raw = readJson(resultPath);
-      const graded = !("error" in classifyResult(raw));
       const config = resultRunConfig(raw, readJson(metaPath(resultPath)), opts.harness);
+      const graded = !("error" in classifyResult(raw, config.trials));
       if (graded && configKey(config) === wanted) {
         skipped++;
         console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
@@ -717,7 +720,13 @@ export function reduceResults(
       continue;
     }
     const raw = readJson(path.join(dir, f));
-    const verdict = classifyResult(raw);
+    const base = f.replace(/\.json$/, "");
+    const meta = readJson(path.join(dir, `${base}.meta.json`)) as
+      | { skills_tree_sha?: unknown }
+      | undefined;
+    const { skill, scenario, harness } = resultIdentity(f, dir);
+    const config = resultRunConfig(raw, meta, harness);
+    const verdict = classifyResult(raw, config.trials);
     if ("error" in verdict) {
       console.error(`skipping ${f}: ${verdict.error}`);
       skipped.push(f);
@@ -725,18 +734,12 @@ export function reduceResults(
     }
     const rows = (raw as { results: { results: { latencyMs?: number; tokenUsage?: Usage }[] } })
       .results.results;
-    const base = f.replace(/\.json$/, "");
-    const { skill, scenario, harness } = resultIdentity(f, dir);
     const key = entryKey({ skill, scenario, harness });
     gradedAt.set(key, Math.max(gradedAt.get(key) ?? 0, fs.statSync(path.join(dir, f)).mtimeMs));
-    const meta = readJson(path.join(dir, `${base}.meta.json`)) as
-      | { skills_tree_sha?: unknown }
-      | undefined;
     // Missing or malformed sidecars are unattested.
     const sha = typeof meta?.skills_tree_sha === "string" ? meta.skills_tree_sha : "unattested";
     shas.add(sha);
     const stats = aggregateTrials(verdict.trials);
-    const config = resultRunConfig(raw, meta, harness);
     entries.push({
       skill,
       scenario,

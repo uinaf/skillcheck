@@ -136,6 +136,22 @@ test("run names are unique across separator and harness boundaries", () => {
   }
 });
 
+// A graded promptfoo row for this harness's config: the checklist score and
+// the skill-used verdict live in their own components.
+function graded(score: number, success: boolean, extra: object = {}) {
+  return {
+    score,
+    success,
+    gradingResult: {
+      componentResults: [
+        { score, pass: success, metadata: { assertionSet: { type: "assert-set" } } },
+        { score: 1, pass: true, assertion: { type: "skill-used" } },
+      ],
+    },
+    ...extra,
+  };
+}
+
 function writeResult(
   dir: string,
   name: string,
@@ -147,7 +163,10 @@ function writeResult(
   const result = {
     results: {
       results: [
-        { score, success, latencyMs: 1200, tokenUsage: { total: 100, assertions: { total: 40 } } },
+        graded(score, success, {
+          latencyMs: 1200,
+          tokenUsage: { total: 100, assertions: { total: 40 } },
+        }),
       ],
     },
     config: {
@@ -255,10 +274,12 @@ test("reduceResults: valid, malformed, and unattested results", () => {
     trials: 1,
     pass: true,
     pass_rate: 1,
+    passes: 1,
     score: 0.9,
     score_min: 0.9,
     score_spread: 0,
-    skill_used_rate: null,
+    skill_used: 1,
+    skill_used_rate: 1,
     noisy: false,
     agent_model: "agent-model",
     agent_effort: null,
@@ -372,7 +393,7 @@ test("reduceResults: skips transport errors but retains graded failures", () => 
       fs.writeFileSync(
         path.join(dir, `demo--${name}.json`),
         JSON.stringify({
-          results: { results: [{ score: 0, success: false, error }], stats },
+          results: { results: [graded(0, false, { error })], stats },
         }),
       );
     }
@@ -406,7 +427,7 @@ test("reduceResults: skips malformed result rows and tolerates absent stats", ()
     fs.writeFileSync(
       path.join(dir, "demo--graded.json"),
       JSON.stringify({
-        results: { results: [{ score: 0.9, success: true }], stats: null },
+        results: { results: [graded(0.9, true)], stats: null },
       }),
     );
     const reduced = reduceResults(dir, false);
@@ -507,11 +528,13 @@ test("classifyResult: a graded fail carrying the threshold reason is FAIL, not E
   // its stats record a graded failure.
   const gradedFail = {
     results: {
-      results: [{ score: 0.62, success: false, error: "Aggregate score 0.62 < 0.7 threshold" }],
+      results: [graded(0.62, false, { error: "Aggregate score 0.62 < 0.7 threshold" })],
       stats: { successes: 0, failures: 1, errors: 0 },
     },
   };
-  assert.deepEqual(classifyResult(gradedFail), { trials: [{ score: 0.62, pass: false }] });
+  assert.deepEqual(classifyResult(gradedFail), {
+    trials: [{ score: 0.62, pass: false, skillUsed: true }],
+  });
 
   // Without stats to attest the grading, error text still wins.
   const noStats = {
@@ -521,14 +544,18 @@ test("classifyResult: a graded fail carrying the threshold reason is FAIL, not E
 });
 
 test("classifyResult: graded verdicts still pass through untouched", () => {
-  const graded = (score: number, success: boolean) => ({
+  const result = (score: number, success: boolean) => ({
     results: {
-      results: [{ score, success }],
+      results: [graded(score, success)],
       stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 },
     },
   });
-  assert.deepEqual(classifyResult(graded(0.91, true)), { trials: [{ score: 0.91, pass: true }] });
-  assert.deepEqual(classifyResult(graded(0, false)), { trials: [{ score: 0, pass: false }] });
+  assert.deepEqual(classifyResult(result(0.91, true)), {
+    trials: [{ score: 0.91, pass: true, skillUsed: true }],
+  });
+  assert.deepEqual(classifyResult(result(0, false)), {
+    trials: [{ score: 0, pass: false, skillUsed: true }],
+  });
 });
 
 function entry(skill: string, scenario: string, score: number, sha = "sha1"): ScorecardEntry {
@@ -540,11 +567,13 @@ function entry(skill: string, scenario: string, score: number, sha = "sha1"): Sc
     skills_tree_sha: sha,
     trials: 1,
     pass,
+    passes: pass ? 1 : 0,
     pass_rate: pass ? 1 : 0,
     score,
     score_min: score,
     score_spread: 0,
-    skill_used_rate: null,
+    skill_used: 1,
+    skill_used_rate: 1,
     noisy: false,
     agent_model: "agent-model",
     agent_effort: null,
@@ -664,7 +693,7 @@ const out = process.argv[process.argv.indexOf("-o") + 1];
 const mode = ${JSON.stringify(behavior)};
 if (mode === "malformed") fs.writeFileSync(out, "not JSON");
 if (mode.startsWith("error-json")) fs.writeFileSync(out, JSON.stringify({results:{results:[{error:"transport failure"}],stats:{successes:0,failures:0,errors:1}}}));
-if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.stringify({ results: { results: [{ score: 0.95, success: true }] } }));
+if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.stringify({ results: { results: [${JSON.stringify(graded(0.95, true))}] } }));
 process.exit(mode.startsWith("nonzero") ? 1 : 0);
 `,
         );

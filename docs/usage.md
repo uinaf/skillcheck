@@ -65,18 +65,20 @@ would be graded on all of their deliverables.
 
 A scenario's result aggregates its trials:
 
-| Field             | Meaning                                                            |
-| ----------------- | ------------------------------------------------------------------ |
-| `pass`            | pass^k: every trial passed. Exit 0 needs this                      |
-| `pass_rate`       | Fraction of trials that passed                                     |
-| `score`           | Mean weighted checklist score (the assert-set, without skill-used) |
-| `score_min`       | Lowest trial score                                                 |
-| `score_spread`    | Highest minus lowest trial score                                   |
-| `skill_used_rate` | Fraction of trials whose `skill-used` assertion passed             |
-| `noisy`           | Trials both passed and failed, or `score_spread` is at least 0.2   |
+| Field                           | Meaning                                                             |
+| ------------------------------- | ------------------------------------------------------------------- |
+| `pass`                          | pass^k: every trial passed. Exit 0 needs this                       |
+| `passes`, `pass_rate`           | Trials that passed, as a count and a fraction                       |
+| `score`                         | Mean weighted checklist score (the assert-set, without skill-used)  |
+| `score_min`                     | Lowest trial score                                                  |
+| `score_spread`                  | Highest minus lowest trial score                                    |
+| `skill_used`, `skill_used_rate` | Trials whose `skill-used` assertion passed, as a count and fraction |
+| `noisy`                         | Trials both passed and failed, or `score_spread` is at least 0.2    |
 
 A trial that errored was never graded, so one errored trial makes the whole
 scenario an ERROR: pass^k over fewer than k trials is not the requested number.
+So is a result with fewer rows than trials, or a row without its checklist and
+`skill-used` components.
 With `--trials` above 1, `run` and `sweep` print min, spread, pass count,
 skill-used count, and `NOISY`.
 
