@@ -570,6 +570,16 @@ test("reduceResults: a Claude judge's effort is recovered from the result config
       [e.agent_model, e.agent_effort, e.judge_model, e.judge_effort],
       ["claude-opus-5-5", "medium", "claude-opus-5-5", "high"],
     );
+
+    const qualified = {
+      id: "anthropic:messages:claude-opus-5-5",
+      config: { reasoning_effort: "high" },
+    };
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "demo--basic.json"), "utf8"));
+    raw.config.defaultTest.options.provider = qualified;
+    fs.writeFileSync(path.join(dir, "demo--basic.json"), JSON.stringify(raw));
+    const [q] = reduceResults(dir, false).entries;
+    assert.deepEqual([q.judge_model, q.judge_effort], [qualified.id, "high"]);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

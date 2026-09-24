@@ -490,9 +490,12 @@ function judgeName(judge: unknown): string {
   // lose their provider prefix; SDK judge objects carry the model in config,
   // while wrapped providers carry it in id.
   if (typeof judge === "string") return judge.replace(/^anthropic:messages:/, "");
-  const j = judge as { id?: unknown; config?: { model?: unknown } } | null | undefined;
+  const j = judge as { id?: unknown; config?: { model?: unknown; effort?: unknown } } | null;
   const name = j?.config?.model ?? j?.id;
-  return typeof name === "string" ? name.replace(/^anthropic:messages:/, "") : "unknown";
+  if (typeof name !== "string") return "unknown";
+  // Only a bare Claude judge is wrapped with `effort`; a provider-qualified
+  // judge is wrapped with `reasoning_effort` and keeps its full ID.
+  return j?.config?.effort === undefined ? name : name.replace(/^anthropic:messages:/, "");
 }
 
 // The configuration a graded result ran with. Sidecars written before run
