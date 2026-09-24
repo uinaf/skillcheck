@@ -1,6 +1,6 @@
 {
   "name": "@uinaf/skillcheck",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Lint and eval harness for agent skills",
   "homepage": "https://github.com/uinaf/skillcheck#readme",
   "bugs": {
