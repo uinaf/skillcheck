@@ -2,10 +2,6 @@
 
 `@uinaf/skillcheck`: a lint and eval harness for agent skills, published to npm and used by uinaf skill repos.
 
-## Tracker
-
-[radar](https://github.com/orgs/uinaf/projects/2)
-
 ## Invariants
 
 - The layout contract under a root is frozen, not configurable: `<root>/skills/<skill>/SKILL.md`, `<root>/skills/<skill>/evals/<scenario>/`, state in `<root>/.skillcheck/`. Every subcommand resolves exactly one root (`--root`, else the cwd). Adding a config file is how this stops being a contract.
