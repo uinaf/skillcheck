@@ -74,8 +74,8 @@ work.
 On the Claude harness the agent can read, search, and write files in its
 workdir, but has no shell, so it cannot install, build, test, or reach the
 network. The shell stays off because the agent runs on the operator's machine
-with the operator's credentials. Codex and Grok run shell commands inside their
-own sandboxes. Write criteria a shell-less agent can meet, so one scenario
+with the operator's credentials. Codex runs shell commands inside its
+`workspace-write` sandbox, and Grok follows its own CLI permission mode. Write criteria a shell-less agent can meet, so one scenario
 scores comparably across harnesses: a checklist item that requires live proof,
 such as a frozen lockfile or a verified release, fails on Claude. Grade whether
 the deliverable names the checks it could not run and hands them over
