@@ -579,8 +579,12 @@ function readJson(file: string): unknown {
 // no skills tree, which holds results only. A scenario deleted from the tree,
 // even the last one, must not live on through a leftover result or a carried row.
 export function liveScenarios(root: string): Set<string> | undefined {
-  if (!fs.existsSync(path.join(root, "skills")) && !fs.existsSync(path.join(root, "cli")))
-    return undefined;
+  const cli = path.join(root, "cli");
+  const hasTree =
+    fs.existsSync(path.join(root, "skills")) ||
+    (fs.existsSync(cli) &&
+      fs.readdirSync(cli).some((d) => fs.existsSync(path.join(cli, d, "skills"))));
+  if (!hasTree) return undefined;
   return new Set(
     discoverScenarios(root).map((dir) => {
       const parts = dir.split(path.sep);

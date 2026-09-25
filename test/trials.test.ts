@@ -976,3 +976,18 @@ test("summarize: deleting the last scenario drops its rows too", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("summarize: an unrelated cli/ directory does not make a results-only root live", () => {
+  const root = tmp("results-only-cli");
+  try {
+    const { results } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    fs.mkdirSync(path.join(root, "cli", "tool", "src"), { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    const r = runCli(["summarize", "--root", root]);
+    assert.equal(r.rc, 0, r.stderr);
+    assert.match(r.stdout, /1 scenario\(s\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -181,7 +181,8 @@ overwritten.
 
 Rows for scenarios that no longer exist in the tree, whether carried from
 today's scorecard or left in `results/`, are dropped and counted on stdout.
-A root with no `skills/` tree holds results only and keeps every row.
+A root with no skills tree (`skills/` or `cli/*/skills/`) holds results only
+and keeps every row.
 
 Files that are not promptfoo results and ungraded transport errors are skipped
 with a warning rather than failing the reduction. Graded assertion failures
