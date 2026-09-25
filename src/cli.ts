@@ -420,8 +420,21 @@ function attemptPath(resultPath: string): string {
   return `${resultPath}.attempt`;
 }
 
+// The scratch root sits in a possibly shared temp dir. Create it owner-only
+// and refuse one that is a symlink or belongs to someone else, so another
+// user cannot redirect the rebuild-and-delete of run directories.
+export function ensurePrivateDir(dir: string): void {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const st = fs.lstatSync(dir);
+  const uid = process.getuid?.();
+  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid))
+    throw new Error(`scratch dir ${dir} is not a directory owned by this user`);
+  if ((st.mode & 0o077) !== 0) fs.chmodSync(dir, 0o700);
+}
+
 function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOutcome {
   const dirs = stateDirs(root);
+  ensurePrivateDir(dirs.scratch);
   const { name, configPath, skill, scenario } = generateRun(path.resolve(scenarioDir), opts, {
     scratchDir: dirs.scratch,
     transformPath: path.join(here, `transform${selfExt}`),

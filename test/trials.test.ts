@@ -696,3 +696,37 @@ test("generateRun: skill_use optional is carried to the assertion and validated"
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("ensurePrivateDir: owner-only, refuses a symlink, tightens an open directory", async () => {
+  const { ensurePrivateDir } = await import("../src/cli.ts");
+  const dir = tmp("private");
+  try {
+    const fresh = path.join(dir, "fresh");
+    ensurePrivateDir(fresh);
+    assert.equal(fs.statSync(fresh).mode & 0o777, 0o700);
+    ensurePrivateDir(fresh);
+
+    const target = path.join(dir, "elsewhere");
+    fs.mkdirSync(target, { mode: 0o700 });
+    fs.symlinkSync(target, path.join(dir, "link"));
+    assert.throws(() => ensurePrivateDir(path.join(dir, "link")), /not a directory owned/);
+
+    const open = path.join(dir, "open");
+    fs.mkdirSync(open);
+    fs.chmodSync(open, 0o777);
+    ensurePrivateDir(open);
+    assert.equal(fs.statSync(open).mode & 0o777, 0o700);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("skill evidence: metadata is also read from providerResponse", async () => {
+  const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
+  const result = assertSkillUsed("", {
+    vars: { workdir: "/nonexistent" },
+    config: { skill: "demo", required: true },
+    providerResponse: { metadata: { skillCalls: [{ name: "demo" }] } },
+  });
+  assert.equal(result.pass, true);
+});

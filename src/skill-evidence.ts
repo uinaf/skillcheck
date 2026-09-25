@@ -16,7 +16,13 @@ interface Call {
 interface EvidenceContext {
   vars: { workdir?: unknown };
   config?: { skill?: unknown; required?: unknown };
-  metadata?: { skillCalls?: unknown; toolCalls?: unknown } | null;
+  metadata?: Metadata | null;
+  providerResponse?: { metadata?: Metadata | null } | null;
+}
+
+interface Metadata {
+  skillCalls?: unknown;
+  toolCalls?: unknown;
 }
 
 const SKILL_ROOTS = [".claude", ".agents", ".grok"];
@@ -36,7 +42,9 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   const calls = (value: unknown): Call[] =>
     Array.isArray(value) ? value.filter((c): c is Call => c !== null && typeof c === "object") : [];
 
-  const skillCall = calls(context.metadata?.skillCalls).find(
+  // context.metadata is promptfoo's shortcut for providerResponse.metadata.
+  const metadata = context.metadata ?? context.providerResponse?.metadata;
+  const skillCall = calls(metadata?.skillCalls).find(
     (c) => c.name === skill && c.is_error !== true,
   );
   if (skillCall) return `skill call ${skill}`;
@@ -50,12 +58,15 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   // must itself be inside the workdir: the installed copy may be a symlink
   // back to the skill's source, which is not what the agent was handed.
   const root = real(workdir) ?? workdir;
-  const read = calls(context.metadata?.toolCalls).find((c) => {
+  const read = calls(metadata?.toolCalls).find((c) => {
     if (c.name !== "Read" || c.is_error !== false || typeof c.output !== "string") return false;
     const file = c.input?.file_path;
     if (typeof file !== "string") return false;
     const named = path.resolve(workdir, file);
-    const inside = [workdir, root].some((w) => !path.relative(w, named).startsWith(".."));
+    const inside = [workdir, root].some((w) => {
+      const rel = path.relative(w, named);
+      return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
+    });
     const target = real(named);
     return inside && target !== undefined && installed.has(target);
   });
