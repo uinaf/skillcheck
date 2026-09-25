@@ -126,15 +126,20 @@ test("run names are unique across separator and harness boundaries", () => {
     "a--b",
     "~v2~a",
     "a%2D",
+    "control",
+    "a--control",
   ];
   const names = new Map<string, string>();
   for (const skill of parts) {
     for (const scenario of parts) {
       for (const harness of ["claude", "codex", "grok"] as const) {
         const identity = `${skill}/${scenario}/${harness}`;
-        const name = runNameFor(`/repo/skills/${skill}/evals/${scenario}`, harness);
-        assert.equal(names.get(name), undefined, `${identity} collides with ${names.get(name)}`);
-        names.set(name, identity);
+        for (const control of [false, true]) {
+          const id = `${identity}${control ? "/control" : ""}`;
+          const name = runNameFor(`/repo/skills/${skill}/evals/${scenario}`, harness, control);
+          assert.equal(names.get(name), undefined, `${id} collides with ${names.get(name)}`);
+          names.set(name, id);
+        }
       }
     }
   }
@@ -274,6 +279,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
     skill: "skillx",
     scenario: "scen-a",
     harness: "claude",
+    variant: "skill",
     skills_tree_sha: "sha1",
     trials: 1,
     pass: true,
@@ -568,6 +574,7 @@ function entry(skill: string, scenario: string, score: number, sha = "sha1"): Sc
     skill,
     scenario,
     harness: "claude",
+    variant: "skill",
     skills_tree_sha: sha,
     trials: 1,
     pass,
