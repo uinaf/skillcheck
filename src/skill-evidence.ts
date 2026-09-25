@@ -9,6 +9,7 @@ import path from "node:path";
 interface Call {
   name?: unknown;
   is_error?: unknown;
+  output?: unknown;
   input?: { file_path?: unknown } | null;
 }
 
@@ -45,12 +46,18 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
       (p): p is string => p !== undefined,
     ),
   );
+  // A completed read carries is_error: false and its output. The named path
+  // must itself be inside the workdir: the installed copy may be a symlink
+  // back to the skill's source, which is not what the agent was handed.
+  const root = real(workdir) ?? workdir;
   const read = calls(context.metadata?.toolCalls).find((c) => {
-    if (c.name !== "Read" || c.is_error === true) return false;
+    if (c.name !== "Read" || c.is_error !== false || typeof c.output !== "string") return false;
     const file = c.input?.file_path;
     if (typeof file !== "string") return false;
-    const target = real(path.resolve(workdir, file));
-    return target !== undefined && installed.has(target);
+    const named = path.resolve(workdir, file);
+    const inside = [workdir, root].some((w) => !path.relative(w, named).startsWith(".."));
+    const target = real(named);
+    return inside && target !== undefined && installed.has(target);
   });
   if (read) return `read of the installed ${skill}/SKILL.md`;
   return undefined;

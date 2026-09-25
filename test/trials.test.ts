@@ -597,8 +597,8 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
     fs.writeFileSync(path.join(dir, "source", "demo", "SKILL.md"), "x");
     const check = (metadata: object, required = true) =>
       assertSkillUsed("", { vars: { workdir }, config: { skill: "demo", required }, metadata });
-    const read = (file_path: string, is_error = false) => ({
-      toolCalls: [{ name: "Read", input: { file_path }, is_error }],
+    const read = (file_path: string, is_error: boolean | undefined = false, output = "---") => ({
+      toolCalls: [{ name: "Read", input: { file_path }, is_error, output }],
     });
 
     assert.deepEqual(check({ skillCalls: [{ name: "demo" }] }), {
@@ -610,6 +610,26 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
     assert.equal(check(read(installed)).pass, true);
     assert.equal(check(read(".claude/skills/demo/SKILL.md")).pass, true, "relative to workdir");
     assert.equal(check(read(installed, true)).pass, false, "a failed read is no evidence");
+    assert.equal(
+      check({ toolCalls: [{ name: "Read", input: { file_path: installed } }] }).pass,
+      false,
+      "an unfinished read is no evidence",
+    );
+
+    // An installed copy that links back to the source: reading the source
+    // path is not reading what the agent was handed.
+    const linked = path.join(dir, "linked");
+    fs.mkdirSync(path.join(linked, ".claude", "skills", "demo"), { recursive: true });
+    const source = path.join(dir, "source", "demo", "SKILL.md");
+    fs.symlinkSync(source, path.join(linked, ".claude", "skills", "demo", "SKILL.md"));
+    const viaLink = (file_path: string) =>
+      assertSkillUsed("", {
+        vars: { workdir: linked },
+        config: { skill: "demo", required: true },
+        metadata: read(file_path),
+      }).pass;
+    assert.equal(viaLink(source), false);
+    assert.equal(viaLink(".claude/skills/demo/SKILL.md"), true);
     assert.equal(
       check(read(path.join(dir, "source", "demo", "SKILL.md"))).pass,
       false,
