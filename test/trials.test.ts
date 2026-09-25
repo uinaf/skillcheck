@@ -931,3 +931,32 @@ test("summarize: drops carried and fresh rows for scenarios no longer in the tre
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("summarize: a retired scenario's stale revision or failed attempt does not block cleanup", () => {
+  const root = gitRoot();
+  try {
+    const { results, scorecards } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    writeGraded(results, "demo--gone", { agent_effort: null, trials: 1 });
+    const meta = path.join(results, "demo--gone.meta.json");
+    fs.writeFileSync(
+      meta,
+      JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), skills_tree_sha: "old" }),
+    );
+    fs.writeFileSync(
+      path.join(results, "demo--renamed.json.attempt"),
+      JSON.stringify({ skill: "demo", scenario: "renamed", harness: "claude" }),
+    );
+    const card = path.join(scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    fs.mkdirSync(scorecards, { recursive: true });
+    fs.writeFileSync(card, JSON.stringify({ scenarios: [] }));
+    const r = runCli(["summarize", "--root", root]);
+    assert.equal(r.rc, 0, r.stderr);
+    assert.match(r.stdout, /1 scenario\(s\)/);
+    assert.match(r.stdout, /dropped 2 row\(s\)/);
+    assert.doesNotMatch(r.stdout, /carried over/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
