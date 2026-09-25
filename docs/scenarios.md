@@ -74,7 +74,9 @@ work.
 The agent runs online, like a real session: it has a shell and web access on
 every harness (Claude: Bash, WebFetch, WebSearch; Codex: network and web search
 in its `workspace-write` sandbox; Grok: its CLI defaults). It runs on the
-operator's machine with the operator's logins, so a task must never ask for a
+operator's machine with the operator's logins (Codex gets a per-run
+`CODEX_HOME` carrying only its config and login, so the operator's own skills
+and global guidance stay out), so a task must never ask for a
 live mutation such as posting a comment, pushing, publishing, or writing to a
 shared workspace. Put that state in fixture files and grade the plan. Checks
 the agent can run for itself (install, build, test, fetch a public page) are

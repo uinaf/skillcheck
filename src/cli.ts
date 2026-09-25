@@ -149,6 +149,9 @@ export interface RunConfig {
   judge_model: string;
   judge_effort: string | null;
   trials: number;
+  // Results before the agent went online had file tools only; they are not
+  // comparable with online runs.
+  agent_access: "online" | "offline";
 }
 
 export function runConfigOf(opts: RunOptions): RunConfig {
@@ -160,6 +163,7 @@ export function runConfigOf(opts: RunOptions): RunConfig {
     judge_model: opts.judgeModel,
     judge_effort: opts.judgeEffort ?? null,
     trials: opts.trials ?? 1,
+    agent_access: "online",
   };
 }
 
@@ -172,12 +176,13 @@ function configKey(c: Partial<RunConfig>): string {
     c.judge_model,
     c.judge_effort ?? null,
     c.trials ?? 1,
+    c.agent_access ?? "offline",
   ]);
 }
 
 function describeConfig(c: Partial<RunConfig>): string {
   const effort = (e: string | null | undefined) => (e ? `@${e}` : "");
-  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}`;
+  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}`;
 }
 
 // Throws when rows of one harness were measured with different configurations.
@@ -537,6 +542,7 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
       judge_model: m.judge_model,
       judge_effort: m.judge_effort ?? null,
       trials: m.trials ?? 1,
+      agent_access: m.agent_access === "online" ? "online" : "offline",
     };
   }
   const r = raw as {
@@ -557,6 +563,7 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
     judge_model: judgeName(judge),
     judge_effort: typeof judgeEffort === "string" ? judgeEffort : null,
     trials: r?.results?.results?.length ?? 1,
+    agent_access: "offline",
   };
 }
 
@@ -716,11 +723,16 @@ function resultIdentity(file: string, dir: string): Identity {
       return part;
     }
   };
-  const suffix = base.match(/--(codex|grok|cursor)$/);
+  // Escaped parts never contain "--", so a trailing --control after at least
+  // skill--scenario is the control suffix, not part of a name.
+  const unsuffixed = base.replace(/--control$/, "");
+  const variant: Variant = unsuffixed !== base && unsuffixed.includes("--") ? "control" : "skill";
+  const stem = variant === "control" ? unsuffixed : base;
+  const suffix = stem.match(/--(codex|grok|cursor)$/);
   const harness: ScorecardEntry["harness"] =
     suffix === null ? "claude" : (suffix[1] as ScorecardEntry["harness"]);
-  const [skill, ...rest] = base.replace(/--(codex|grok|cursor)$/, "").split("--");
-  return { skill: decode(skill), scenario: decode(rest.join("--")), harness, variant: "skill" };
+  const [skill, ...rest] = stem.replace(/--(codex|grok|cursor)$/, "").split("--");
+  return { skill: decode(skill), scenario: decode(rest.join("--")), harness, variant };
 }
 
 interface Usage {
@@ -898,8 +910,9 @@ function cmdSummarize(argv: string[]): void {
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
+  const scenarios = merged.entries.filter((e) => e.variant !== "control");
   console.log(
-    `${out}: ${merged.entries.length} scenario(s), ${merged.entries.filter((e) => e.pass).length} passing, ${skipped.length} skipped file(s)`,
+    `${out}: ${scenarios.length} scenario(s), ${scenarios.filter((e) => e.pass).length} passing, ${merged.entries.length - scenarios.length} control(s), ${skipped.length} skipped file(s)`,
   );
   if (existing.length > 0) {
     console.log(

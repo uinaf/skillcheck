@@ -207,6 +207,7 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
       agent_effort: "medium",
       judge_model: "claude-opus-5",
       judge_effort: null,
+      agent_access: "offline",
       latency_ms: 1000,
       tokens: 450,
     });
@@ -227,6 +228,7 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
     agent_effort: null,
     judge_model: "j",
     judge_effort: null,
+    agent_access: "online",
     latency_ms: 0,
     tokens: 0,
     ...over,
@@ -449,6 +451,7 @@ function writeGraded(
       agent_model: "claude-opus-5",
       judge_model: "claude-opus-5",
       judge_effort: null,
+      agent_access: "online",
       ...config,
     }),
   );
@@ -516,6 +519,14 @@ syncBuiltinESMExports();
     const same = sweep();
     assert.equal(same.status, 0, same.stderr);
     assert.match(same.stdout, /SKIP  demo--basic/);
+
+    const metaFile = path.join(results, "demo--basic.meta.json");
+    const online = JSON.parse(fs.readFileSync(metaFile, "utf8"));
+    const { agent_access: _, ...offline } = online;
+    fs.writeFileSync(metaFile, JSON.stringify(offline));
+    const stale = sweep();
+    assert.equal(stale.status, 0, stale.stderr);
+    assert.match(stale.stdout, /RERUN demo--basic \(results used .*, offline\)/);
 
     const changed = sweep("--agent-effort", "medium");
     assert.equal(changed.status, 0, changed.stderr);
@@ -831,6 +842,51 @@ test("control: rows pair with their skill rows into lift and no-lift scenarios",
     assert.equal(s.lift, 0.3, "paired scenarios only: (0.9 + 0.95) / 2 - 0.625");
     assert.deepEqual(s.no_lift, ["b"], "b's control passes every trial");
   } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("control: an unattested control result keeps its variant and harness", () => {
+  const dir = tmp("control-legacy");
+  try {
+    for (const name of ["demo--basic--codex--control", "demo--basic--control", "demo--control"])
+      fs.writeFileSync(
+        path.join(dir, `${name}.json`),
+        JSON.stringify({ results: { results: [{ ...row(0.8, true), success: true }] } }),
+      );
+    const rows = reduceResults(dir, false).entries.map((e) => [
+      e.skill,
+      e.scenario,
+      e.harness,
+      e.variant,
+    ]);
+    assert.deepEqual(rows, [
+      ["demo", "basic", "codex", "control"],
+      ["demo", "basic", "claude", "control"],
+      ["demo", "control", "claude", "skill"],
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("codex: each run gets a home with the login and none of the operator's skills", async () => {
+  const { privateCodexHome } = await import("../src/scenario.ts");
+  const dir = tmp("codex-home");
+  const saved = process.env.CODEX_HOME;
+  try {
+    const source = path.join(dir, "operator");
+    fs.mkdirSync(path.join(source, "skills", "demo"), { recursive: true });
+    fs.writeFileSync(path.join(source, "config.toml"), "model = 'x'\n");
+    fs.writeFileSync(path.join(source, "AGENTS.md"), "operator guidance\n");
+    process.env.CODEX_HOME = source;
+    const home = path.join(dir, "run", "codex-home");
+    privateCodexHome(home);
+    assert.deepEqual(fs.readdirSync(home), ["config.toml"]);
+    assert.equal(fs.readFileSync(path.join(home, "config.toml"), "utf8"), "model = 'x'\n");
+  } finally {
+    if (saved === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = saved;
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

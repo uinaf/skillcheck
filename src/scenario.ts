@@ -289,7 +289,7 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
         sandbox_mode: "workspace-write",
         network_access_enabled: true,
         web_search_enabled: true,
-        cli_env: { CODEX_HOME: process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex") },
+        cli_env: { CODEX_HOME: path.join(workdir, "..", "..", "codex-home") },
       },
     };
   }
@@ -471,6 +471,19 @@ export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean)
   return pkgs;
 }
 
+// Codex reads skills and global instructions from CODEX_HOME, so the operator's
+// own home would hand a control run the skill it withholds and add unrelated
+// guidance to every run. Each run gets a home that carries only the login.
+export function privateCodexHome(dir: string): void {
+  const source = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const file of ["config.toml", "auth.json"]) {
+    const from = path.join(source, file);
+    if (fs.existsSync(from)) fs.symlinkSync(from, path.join(dir, file));
+  }
+}
+
 export function generateRun(
   scenarioDir: string,
   opts: RunOptions,
@@ -483,6 +496,8 @@ export function generateRun(
   const trials = Array.from({ length: opts.trials ?? 1 }, (_, i) =>
     materialize(s, path.join(runDir, trialLabel(i)), opts.harness, opts.control),
   );
+
+  if (opts.harness === "codex") privateCodexHome(path.join(runDir, "codex-home"));
 
   // promptfoo resolves provider SDKs from the generated config directory. The
   // link stays outside workdir, hidden from the agent and its manifest.

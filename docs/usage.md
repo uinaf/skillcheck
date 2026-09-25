@@ -212,6 +212,7 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
   "judge_model": "claude-opus-5",
   "judge_effort": null,
   "trials": 3,
+  "agent_access": "online",
   "aggregate": { "pass": false, "pass_rate": 0.6667, "score": 0.81, "...": "..." },
   "ran_at": "<ISO timestamp>",
   "tool_version": "<skillcheck version>"
@@ -219,7 +220,8 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
 ```
 
 `summarize` reads those sidecars and refuses to mix skills-tree revisions or
-run configurations (agent model and effort, judge model and effort, trials) in
+run configurations (agent model and effort, judge model and effort, trials, and
+agent access) in
 one scorecard, including retained rows from partial reruns, unless
 `--allow-mixed`. Configurations are compared within a harness, since harnesses
 differ by design. Sidecars written before run configurations were recorded fall
