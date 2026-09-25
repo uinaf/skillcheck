@@ -71,15 +71,16 @@ Write descriptions a judge can check against the deliverable: an observable
 property, not a feeling. Weight the items that would make a reviewer reject the
 work.
 
-On the Claude harness the agent can read, search, and write files in its
-workdir, but has no shell, so it cannot install, build, test, or reach the
-network. The shell stays off because the agent runs on the operator's machine
-with the operator's credentials. Codex runs shell commands inside its
-`workspace-write` sandbox, and Grok follows its own CLI permission mode. Write criteria a shell-less agent can meet, so one scenario
-scores comparably across harnesses: a checklist item that requires live proof,
-such as a frozen lockfile or a verified release, fails on Claude. Grade whether
-the deliverable names the checks it could not run and hands them over
-precisely.
+The agent runs online, like a real session: it has a shell and web access on
+every harness (Claude: Bash, WebFetch, WebSearch; Codex: network and web search
+in its `workspace-write` sandbox; Grok: its CLI defaults). It runs on the
+operator's machine with the operator's logins (Codex gets a per-run
+`CODEX_HOME` carrying only its config and login, so the operator's own skills
+and global guidance stay out), so a task must never ask for a
+live mutation such as posting a comment, pushing, publishing, or writing to a
+shared workspace. Put that state in fixture files and grade the plan. Checks
+the agent can run for itself (install, build, test, fetch a public page) are
+fair to require.
 
 Name a specific tool or version only when the skill teaches it. Otherwise grade
 the property the tool provides, so an equivalent approach passes.

@@ -26,6 +26,7 @@ export interface Scenario {
   name: string; // "<skill>--<scenario>"
   skillDir: string;
   prompt: string;
+  task: string; // the prompt without the hidden-skill invocation
   files: { name: string; content: string }[];
   criteria: Criteria;
 }
@@ -39,6 +40,7 @@ export interface RunOptions {
   judgeModel: string; // bare Claude model, or a provider-qualified promptfoo id ("openai:chat:gpt-5.6-sol")
   judgeEffort?: string; // Claude effort for a bare judge; reasoning_effort for a provider-qualified one
   maxTurns?: number; // claude agent leg only; default 50
+  control?: boolean; // run without the skill installed, as a baseline
   trials?: number; // independent agent runs per scenario; default 1
 }
 
@@ -98,10 +100,11 @@ export function loadScenario(scenarioDir: string): Scenario {
 
   const files: Scenario["files"] = [];
   const fileBlock = /^=+ FILE: (.+?) =+\n([\s\S]*?)\n=+ END FILE =+$/gm;
-  let prompt = taskMd.replace(fileBlock, (_, name: string, content: string) => {
+  const task = taskMd.replace(fileBlock, (_, name: string, content: string) => {
     files.push({ name: name.trim(), content: content + "\n" });
     return `(Input file \`${name.trim()}\` is available in your working directory.)`;
   });
+  let prompt = task;
 
   // Hidden skills only ever run from an explicit user invocation, so the eval
   // task carries one; materialize() strips the flag from the installed copy.
@@ -110,7 +113,16 @@ export function loadScenario(scenarioDir: string): Scenario {
     prompt = `Use the ${skill} skill for this task.\n\n${prompt}`;
   }
 
-  return { skill, scenario, name: `${skill}--${scenario}`, skillDir, prompt, files, criteria };
+  return {
+    skill,
+    scenario,
+    name: `${skill}--${scenario}`,
+    skillDir,
+    prompt,
+    task,
+    files,
+    criteria,
+  };
 }
 
 // Canonical run/result name for a scenario + harness. Single source of truth:
@@ -126,17 +138,20 @@ export function encodeRunNamePart(part: string): string {
   return `~v2~${encodeURIComponent(part).replaceAll("-", "%2D").replaceAll("~", "%7E")}`;
 }
 
-export function runNameFor(scenarioDir: string, harness: Harness): string {
+export function runNameFor(scenarioDir: string, harness: Harness, control = false): string {
   const m = path.resolve(scenarioDir).match(/skills\/([^/]+)\/evals\/([^/]+)$/);
   if (!m)
     throw new Error(
       `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
     );
   const name = `${encodeRunNamePart(m[1])}--${encodeRunNamePart(m[2])}`;
-  const full = harness === "claude" ? name : `${name}--${harness}`;
+  // A control result is identified by its sidecars; the suffix only keeps the
+  // filename apart from the same scenario's skill run. Escaped parts never
+  // contain "--", so it cannot collide with a scenario name.
+  const full = `${harness === "claude" ? name : `${name}--${harness}`}${control ? "--control" : ""}`;
   if (Buffer.byteLength(`${full}.json.attempt`) <= 255) return full;
   return `~v3~${createHash("sha256")
-    .update(JSON.stringify([m[1], m[2], harness]))
+    .update(JSON.stringify(control ? [m[1], m[2], harness, "control"] : [m[1], m[2], harness]))
     .digest("hex")}`;
 }
 
@@ -175,6 +190,7 @@ export function materialize(
   s: Scenario,
   runDir: string,
   harness: Harness,
+  control = false,
 ): { workdir: string; manifestPath: string } {
   const workdir = path.join(runDir, "workdir");
   fs.rmSync(runDir, { recursive: true, force: true });
@@ -203,8 +219,14 @@ export function materialize(
   // Install the skill under test, excluding its evals (criteria must not leak
   // into the agent's context). Claude discovers .claude/skills/; codex
   // discovers .agents/skills/ (install both for codex); Grok uses .grok/skills/.
-  const roots =
-    harness === "codex" ? [".claude", ".agents"] : harness === "grok" ? [".grok"] : [".claude"];
+  // A control run installs nothing: it measures the agent without the skill.
+  const roots = control
+    ? []
+    : harness === "codex"
+      ? [".claude", ".agents"]
+      : harness === "grok"
+        ? [".grok"]
+        : [".claude"];
   for (const root of roots) {
     fs.cpSync(s.skillDir, path.join(workdir, root, "skills", s.skill), {
       recursive: true,
@@ -265,7 +287,9 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
         skip_git_repo_check: true,
         enable_streaming: true, // required for skill-used evidence
         sandbox_mode: "workspace-write",
-        cli_env: { CODEX_HOME: process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex") },
+        network_access_enabled: true,
+        web_search_enabled: true,
+        cli_env: { CODEX_HOME: path.join(workdir, "..", "..", "codex-home") },
       },
     };
   }
@@ -280,9 +304,20 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
       apiKeyRequired: false,
       working_dir: workdir,
       setting_sources: ["project"],
-      skills: [skill],
+      // A control run offers no skill, so the Skill tool and its catalog stay off.
+      ...(opts.control ? {} : { skills: [skill] }),
       permission_mode: "acceptEdits",
-      append_allowed_tools: ["Read", "Write", "Edit", "Glob", "Grep"],
+      // Online like a real session: shell and web, not just file tools.
+      append_allowed_tools: [
+        "Read",
+        "Write",
+        "Edit",
+        "Glob",
+        "Grep",
+        "Bash",
+        "WebFetch",
+        "WebSearch",
+      ],
       max_turns: opts.maxTurns ?? 50,
     },
   };
@@ -359,7 +394,11 @@ export function buildConfig(
     tests: trials.map((t, i) => ({
       description: s.criteria.context,
       providers: [trialLabel(i)],
-      vars: { task: s.prompt, workdir: t.workdir, manifest: t.manifestPath },
+      vars: {
+        task: opts.control ? s.task : s.prompt,
+        workdir: t.workdir,
+        manifest: t.manifestPath,
+      },
       // Both the weighted checklist and the separate skill-used assertion
       // must pass, unless the scenario makes skill use optional.
       assert: [
@@ -376,7 +415,10 @@ export function buildConfig(
           type: "javascript",
           value: `file://${paths.skillEvidencePath}`,
           metric: "skill-used",
-          config: { skill: s.skill, required: s.criteria.skill_use !== "optional" },
+          config: {
+            skill: s.skill,
+            required: !opts.control && s.criteria.skill_use !== "optional",
+          },
         },
       ],
     })),
@@ -429,18 +471,33 @@ export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean)
   return pkgs;
 }
 
+// Codex reads skills and global instructions from CODEX_HOME, so the operator's
+// own home would hand a control run the skill it withholds and add unrelated
+// guidance to every run. Each run gets a home that carries only the login.
+export function privateCodexHome(dir: string): void {
+  const source = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const file of ["config.toml", "auth.json"]) {
+    const from = path.join(source, file);
+    if (fs.existsSync(from)) fs.symlinkSync(from, path.join(dir, file));
+  }
+}
+
 export function generateRun(
   scenarioDir: string,
   opts: RunOptions,
   paths: RunPaths,
 ): { name: string; configPath: string; skill: string; scenario: string } {
   const s = loadScenario(scenarioDir);
-  const name = runNameFor(scenarioDir, opts.harness);
+  const name = runNameFor(scenarioDir, opts.harness, opts.control);
   const runDir = path.join(paths.scratchDir, name);
   fs.rmSync(runDir, { recursive: true, force: true });
   const trials = Array.from({ length: opts.trials ?? 1 }, (_, i) =>
-    materialize(s, path.join(runDir, trialLabel(i)), opts.harness),
+    materialize(s, path.join(runDir, trialLabel(i)), opts.harness, opts.control),
   );
+
+  if (opts.harness === "codex") privateCodexHome(path.join(runDir, "codex-home"));
 
   // promptfoo resolves provider SDKs from the generated config directory. The
   // link stays outside workdir, hidden from the agent and its manifest.

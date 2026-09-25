@@ -191,6 +191,7 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
       skill: "demo",
       scenario: "basic",
       harness: "claude",
+      variant: "skill",
       skills_tree_sha: "sha1",
       trials: 3,
       pass: false,
@@ -206,6 +207,7 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
       agent_effort: "medium",
       judge_model: "claude-opus-5",
       judge_effort: null,
+      agent_access: "offline",
       latency_ms: 1000,
       tokens: 450,
     });
@@ -226,6 +228,7 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
     agent_effort: null,
     judge_model: "j",
     judge_effort: null,
+    agent_access: "online",
     latency_ms: 0,
     tokens: 0,
     ...over,
@@ -245,6 +248,9 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
         pass_rate: 0.6667,
         score: 0.7,
         noisy: ["two"],
+        control_score: null,
+        lift: null,
+        no_lift: [],
       },
       {
         skill: "b",
@@ -254,6 +260,9 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
         pass_rate: 0,
         score: 0.2,
         noisy: [],
+        control_score: null,
+        lift: null,
+        no_lift: [],
       },
     ],
   );
@@ -442,6 +451,7 @@ function writeGraded(
       agent_model: "claude-opus-5",
       judge_model: "claude-opus-5",
       judge_effort: null,
+      agent_access: "online",
       ...config,
     }),
   );
@@ -509,6 +519,14 @@ syncBuiltinESMExports();
     const same = sweep();
     assert.equal(same.status, 0, same.stderr);
     assert.match(same.stdout, /SKIP  demo--basic/);
+
+    const metaFile = path.join(results, "demo--basic.meta.json");
+    const online = JSON.parse(fs.readFileSync(metaFile, "utf8"));
+    const { agent_access: _, ...offline } = online;
+    fs.writeFileSync(metaFile, JSON.stringify(offline));
+    const stale = sweep();
+    assert.equal(stale.status, 0, stale.stderr);
+    assert.match(stale.stdout, /RERUN demo--basic \(results used .*, offline\)/);
 
     const changed = sweep("--agent-effort", "medium");
     assert.equal(changed.status, 0, changed.stderr);
@@ -729,4 +747,146 @@ test("skill evidence: metadata is also read from providerResponse", async () => 
     providerResponse: { metadata: { skillCalls: [{ name: "demo" }] } },
   });
   assert.equal(result.pass, true);
+});
+
+test("control: installs no skill, drops the hidden invocation, never requires skill use", () => {
+  const dir = tmp("control");
+  try {
+    const skillDir = path.join(dir, "skills", "demo");
+    fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
+      recursive: true,
+    });
+    const md = path.join(skillDir, "SKILL.md");
+    fs.writeFileSync(
+      md,
+      fs.readFileSync(md, "utf8").replace(/^---\n/, "---\ndisable-model-invocation: true\n"),
+    );
+    const scenarioDir = path.join(skillDir, "evals", "basic");
+    const paths = {
+      scratchDir: path.join(dir, "scratch"),
+      transformPath: path.join(here, "..", "src", "transform.ts"),
+      grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+      skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
+    };
+    const base = { harness: "claude" as const, judgeModel: "claude-opus-5" };
+    const withSkill = generateRun(scenarioDir, base, paths);
+    const control = generateRun(scenarioDir, { ...base, control: true }, paths);
+    assert.equal(withSkill.name, "demo--basic");
+    assert.equal(control.name, "demo--basic--control");
+
+    const read = (p: string) => JSON.parse(fs.readFileSync(p, "utf8"));
+    const skillConfig = read(withSkill.configPath);
+    const controlConfig = read(control.configPath);
+    const workdir = controlConfig.providers[0].config.working_dir;
+    assert.equal(fs.existsSync(path.join(workdir, ".claude")), false);
+    assert.ok(fs.existsSync(path.join(workdir, "note.md")));
+    assert.match(skillConfig.tests[0].vars.task, /^Use the demo skill for this task\./);
+    assert.doesNotMatch(controlConfig.tests[0].vars.task, /Use the demo skill/);
+    assert.deepEqual(skillConfig.providers[0].config.skills, ["demo"]);
+    assert.equal("skills" in controlConfig.providers[0].config, false);
+    assert.equal(skillConfig.tests[0].assert[1].config.required, true);
+    assert.equal(controlConfig.tests[0].assert[1].config.required, false);
+    for (const tool of ["Bash", "WebFetch", "WebSearch"])
+      assert.ok(controlConfig.providers[0].config.append_allowed_tools.includes(tool));
+
+    for (const harness of ["codex", "grok"] as const) {
+      const c = generateRun(scenarioDir, { ...base, harness, control: true }, paths);
+      assert.equal(c.name, `demo--basic--${harness}--control`);
+      const wd = read(c.configPath).providers[0].config.working_dir;
+      for (const root of [".claude", ".agents", ".grok"])
+        assert.equal(fs.existsSync(path.join(wd, root)), false, `${harness} ${root}`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("control: rows pair with their skill rows into lift and no-lift scenarios", () => {
+  const dir = tmp("control-reduce");
+  try {
+    const write = (name: string, scenario: string, variant: string, score: number) => {
+      fs.writeFileSync(
+        path.join(dir, `${name}.json`),
+        JSON.stringify({ results: { results: [{ ...row(score, true), success: score >= 0.7 }] } }),
+      );
+      fs.writeFileSync(
+        path.join(dir, `${name}.meta.json`),
+        JSON.stringify({
+          skills_tree_sha: "sha1",
+          skill: "demo",
+          scenario,
+          harness: "claude",
+          variant,
+        }),
+      );
+    };
+    write("demo--a", "a", "skill", 0.9);
+    write("demo--a--control", "a", "control", 0.4);
+    write("demo--b", "b", "skill", 0.95);
+    write("demo--b--control", "b", "control", 0.85);
+    write("demo--c", "c", "skill", 0.8);
+    const { entries } = reduceResults(dir, false);
+    assert.deepEqual(
+      entries.map((e) => [e.scenario, e.variant]),
+      [
+        ["a", "control"],
+        ["a", "skill"],
+        ["b", "control"],
+        ["b", "skill"],
+        ["c", "skill"],
+      ],
+    );
+    const [s] = summarizeSkills(entries);
+    assert.equal(s.scenarios, 3, "control rows are not scenarios");
+    assert.equal(s.control_score, 0.625);
+    assert.equal(s.lift, 0.3, "paired scenarios only: (0.9 + 0.95) / 2 - 0.625");
+    assert.deepEqual(s.no_lift, ["b"], "b's control passes every trial");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("control: an unattested control result keeps its variant and harness", () => {
+  const dir = tmp("control-legacy");
+  try {
+    for (const name of ["demo--basic--codex--control", "demo--basic--control", "demo--control"])
+      fs.writeFileSync(
+        path.join(dir, `${name}.json`),
+        JSON.stringify({ results: { results: [{ ...row(0.8, true), success: true }] } }),
+      );
+    const rows = reduceResults(dir, false).entries.map((e) => [
+      e.skill,
+      e.scenario,
+      e.harness,
+      e.variant,
+    ]);
+    assert.deepEqual(rows, [
+      ["demo", "basic", "codex", "control"],
+      ["demo", "basic", "claude", "control"],
+      ["demo", "control", "claude", "skill"],
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("codex: each run gets a home with the login and none of the operator's skills", async () => {
+  const { privateCodexHome } = await import("../src/scenario.ts");
+  const dir = tmp("codex-home");
+  const saved = process.env.CODEX_HOME;
+  try {
+    const source = path.join(dir, "operator");
+    fs.mkdirSync(path.join(source, "skills", "demo"), { recursive: true });
+    fs.writeFileSync(path.join(source, "config.toml"), "model = 'x'\n");
+    fs.writeFileSync(path.join(source, "AGENTS.md"), "operator guidance\n");
+    process.env.CODEX_HOME = source;
+    const home = path.join(dir, "run", "codex-home");
+    privateCodexHome(home);
+    assert.deepEqual(fs.readdirSync(home), ["config.toml"]);
+    assert.equal(fs.readFileSync(path.join(home, "config.toml"), "utf8"), "model = 'x'\n");
+  } finally {
+    if (saved === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

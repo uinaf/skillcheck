@@ -81,7 +81,6 @@ export default class GrokProvider {
       "streaming-json",
       "--permission-mode",
       "acceptEdits",
-      "--disable-web-search",
       "--no-subagents",
       ...(model ? ["--model", model] : []),
       "-p",

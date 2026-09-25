@@ -69,7 +69,7 @@ export function parseArgs(argv: string[]): {
       const v = argv[++i];
       if (v === undefined || v.startsWith("--")) throw new Error(`${a} needs a value`);
       flags.set(a, v);
-    } else if (a === "--all" || a === "--allow-mixed") {
+    } else if (a === "--all" || a === "--allow-mixed" || a === "--control") {
       flags.set(a, true);
     } else {
       throw new Error(`unknown flag: ${a}`);
@@ -134,6 +134,7 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
     maxTurns: flags.has("--max-turns")
       ? parsePositiveInt("--max-turns", flags.get("--max-turns") as string)
       : undefined,
+    control: flags.get("--control") === true,
     trials: flags.has("--trials")
       ? parsePositiveInt("--trials", flags.get("--trials") as string)
       : 1,
@@ -148,6 +149,9 @@ export interface RunConfig {
   judge_model: string;
   judge_effort: string | null;
   trials: number;
+  // Results before the agent went online had file tools only; they are not
+  // comparable with online runs.
+  agent_access: "online" | "offline";
 }
 
 export function runConfigOf(opts: RunOptions): RunConfig {
@@ -159,6 +163,7 @@ export function runConfigOf(opts: RunOptions): RunConfig {
     judge_model: opts.judgeModel,
     judge_effort: opts.judgeEffort ?? null,
     trials: opts.trials ?? 1,
+    agent_access: "online",
   };
 }
 
@@ -171,12 +176,13 @@ function configKey(c: Partial<RunConfig>): string {
     c.judge_model,
     c.judge_effort ?? null,
     c.trials ?? 1,
+    c.agent_access ?? "offline",
   ]);
 }
 
 function describeConfig(c: Partial<RunConfig>): string {
   const effort = (e: string | null | undefined) => (e ? `@${e}` : "");
-  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}`;
+  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}`;
 }
 
 // Throws when rows of one harness were measured with different configurations.
@@ -445,7 +451,12 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   const resultPath = path.join(dirs.results, `${name}.json`);
   // Keep attempted identity even when the child produces no output. This is
   // separate from the result so a no-output failure remains eligible for sweep.
-  const identity = { skill, scenario, harness: opts.harness };
+  const identity = {
+    skill,
+    scenario,
+    harness: opts.harness,
+    variant: opts.control ? ("control" as const) : ("skill" as const),
+  };
   fs.writeFileSync(attemptPath(resultPath), JSON.stringify(identity) + "\n");
   // Never let a stale result masquerade as this run's outcome.
   fs.rmSync(resultPath, { force: true });
@@ -531,6 +542,7 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
       judge_model: m.judge_model,
       judge_effort: m.judge_effort ?? null,
       trials: m.trials ?? 1,
+      agent_access: m.agent_access === "online" ? "online" : "offline",
     };
   }
   const r = raw as {
@@ -551,6 +563,7 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
     judge_model: judgeName(judge),
     judge_effort: typeof judgeEffort === "string" ? judgeEffort : null,
     trials: r?.results?.results?.length ?? 1,
+    agent_access: "offline",
   };
 }
 
@@ -592,7 +605,7 @@ function discoverScenarios(root: string): string[] {
 }
 
 const RUN_FLAGS =
-  "[--root DIR] [--harness claude|codex|grok] [--agent MODEL] [--agent-effort EFFORT] [--judge MODEL] [--judge-effort EFFORT] [--trials K] [--max-turns N]";
+  "[--root DIR] [--harness claude|codex|grok] [--agent MODEL] [--agent-effort EFFORT] [--judge MODEL] [--judge-effort EFFORT] [--trials K] [--max-turns N] [--control]";
 
 function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
@@ -624,7 +637,7 @@ function cmdSweep(argv: string[]): void {
     errored = 0,
     skipped = 0;
   for (const dir of discoverScenarios(root)) {
-    const name = runNameFor(dir, opts.harness);
+    const name = runNameFor(dir, opts.harness, opts.control);
     const resultPath = path.join(resultsDir, `${name}.json`);
     if (!all && fs.existsSync(resultPath) && !fs.existsSync(attemptPath(resultPath))) {
       // A malformed legacy result is incomplete and must be rerun, and so is
@@ -661,15 +674,18 @@ export interface ScorecardEntry extends TrialStats, RunConfig {
   skill: string;
   scenario: string;
   harness: Harness | "cursor";
+  // "control" rows ran without the skill installed. Absent on older rows.
+  variant?: Variant;
   skills_tree_sha: string;
   latency_ms: number; // mean per trial
   tokens: number; // agent and judge, summed over trials
 }
 
-function resultIdentity(
-  file: string,
-  dir: string,
-): Pick<ScorecardEntry, "skill" | "scenario" | "harness"> {
+export type Variant = "skill" | "control";
+
+type Identity = Pick<ScorecardEntry, "skill" | "scenario" | "harness"> & { variant: Variant };
+
+function resultIdentity(file: string, dir: string): Identity {
   const base = file.replace(/\.json$/, "");
   for (const sidecar of [`${base}.meta.json`, `${file}.attempt`]) {
     try {
@@ -686,7 +702,12 @@ function resultIdentity(
           identity.harness === "codex" ||
           identity.harness === "grok")
       ) {
-        return { skill: identity.skill, scenario: identity.scenario, harness: identity.harness };
+        return {
+          skill: identity.skill,
+          scenario: identity.scenario,
+          harness: identity.harness,
+          variant: "variant" in identity && identity.variant === "control" ? "control" : "skill",
+        };
       }
     } catch {
       // Old results and attempts have no identity metadata.
@@ -702,11 +723,16 @@ function resultIdentity(
       return part;
     }
   };
-  const suffix = base.match(/--(codex|grok|cursor)$/);
+  // Escaped parts never contain "--", so a trailing --control after at least
+  // skill--scenario is the control suffix, not part of a name.
+  const unsuffixed = base.replace(/--control$/, "");
+  const variant: Variant = unsuffixed !== base && unsuffixed.includes("--") ? "control" : "skill";
+  const stem = variant === "control" ? unsuffixed : base;
+  const suffix = stem.match(/--(codex|grok|cursor)$/);
   const harness: ScorecardEntry["harness"] =
     suffix === null ? "claude" : (suffix[1] as ScorecardEntry["harness"]);
-  const [skill, ...rest] = base.replace(/--(codex|grok|cursor)$/, "").split("--");
-  return { skill: decode(skill), scenario: decode(rest.join("--")), harness };
+  const [skill, ...rest] = stem.replace(/--(codex|grok|cursor)$/, "").split("--");
+  return { skill: decode(skill), scenario: decode(rest.join("--")), harness, variant };
 }
 
 interface Usage {
@@ -751,7 +777,7 @@ export function reduceResults(
     const meta = readJson(path.join(dir, `${base}.meta.json`)) as
       | { skills_tree_sha?: unknown }
       | undefined;
-    const { skill, scenario, harness } = resultIdentity(f, dir);
+    const { skill, scenario, harness, variant } = resultIdentity(f, dir);
     const config = resultRunConfig(raw, meta, harness);
     const verdict = classifyResult(raw, config.trials);
     if ("error" in verdict) {
@@ -761,7 +787,7 @@ export function reduceResults(
     }
     const rows = (raw as { results: { results: { latencyMs?: number; tokenUsage?: Usage }[] } })
       .results.results;
-    const key = entryKey({ skill, scenario, harness });
+    const key = entryKey({ skill, scenario, harness, variant });
     gradedAt.set(key, Math.max(gradedAt.get(key) ?? 0, fs.statSync(path.join(dir, f)).mtimeMs));
     // Missing or malformed sidecars are unattested.
     const sha = typeof meta?.skills_tree_sha === "string" ? meta.skills_tree_sha : "unattested";
@@ -771,6 +797,7 @@ export function reduceResults(
       skill,
       scenario,
       harness,
+      variant,
       skills_tree_sha: sha,
       ...stats,
       ...config,
@@ -792,8 +819,8 @@ export function reduceResults(
 
 // One scenario's identity in a scorecard. Rerunning a subset must update those
 // rows and leave every other row alone.
-function entryKey(e: Pick<ScorecardEntry, "skill" | "scenario" | "harness">): string {
-  return [e.skill, e.scenario, e.harness].join("\0");
+function entryKey(e: Pick<ScorecardEntry, "skill" | "scenario" | "harness" | "variant">): string {
+  return [e.skill, e.scenario, e.harness, e.variant ?? "skill"].join("\0");
 }
 
 // A consumer whose results/ holds only today's rerun would otherwise overwrite
@@ -883,8 +910,9 @@ function cmdSummarize(argv: string[]): void {
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
+  const scenarios = merged.entries.filter((e) => e.variant !== "control");
   console.log(
-    `${out}: ${merged.entries.length} scenario(s), ${merged.entries.filter((e) => e.pass).length} passing, ${skipped.length} skipped file(s)`,
+    `${out}: ${scenarios.length} scenario(s), ${scenarios.filter((e) => e.pass).length} passing, ${merged.entries.length - scenarios.length} control(s), ${skipped.length} skipped file(s)`,
   );
   if (existing.length > 0) {
     console.log(
@@ -893,7 +921,13 @@ function cmdSummarize(argv: string[]): void {
   }
   console.log(`\n${formatSkillTable(summarizeSkills(merged.entries))}`);
   for (const e of merged.entries.filter((x) => x.noisy)) {
-    console.log(`NOISY ${e.skill}/${e.scenario} (${e.harness}) ${formatStats(e)}`);
+    const tag = e.variant === "control" ? ", control" : "";
+    console.log(`NOISY ${e.skill}/${e.scenario} (${e.harness}${tag}) ${formatStats(e)}`);
+  }
+  for (const s of summarizeSkills(merged.entries)) {
+    for (const scenario of s.no_lift) {
+      console.log(`NO LIFT ${s.skill}/${scenario} (${s.harness}): passes without the skill`);
+    }
   }
 }
 
@@ -905,31 +939,50 @@ export interface SkillSummary {
   pass_rate: number; // mean over scenarios
   score: number; // mean over scenarios
   noisy: string[];
+  // Over scenarios that also have a control row; null without any.
+  control_score: number | null;
+  lift: number | null; // skill score minus control score on those scenarios
+  no_lift: string[]; // scenarios whose control passed every trial
 }
 
 // Scenarios weigh equally; rows from an older scorecard without trial fields
 // count as one trial.
 export function summarizeSkills(entries: ScorecardEntry[]): SkillSummary[] {
   const groups = new Map<string, ScorecardEntry[]>();
+  const controls = new Map<string, ScorecardEntry>();
   for (const e of entries) {
     const key = `${e.skill}\0${e.harness}`;
-    groups.set(key, [...(groups.get(key) ?? []), e]);
+    if (e.variant === "control") controls.set(`${key}\0${e.scenario}`, e);
+    else groups.set(key, [...(groups.get(key) ?? []), e]);
   }
   const mean = (xs: number[]) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
-  return [...groups.values()].map((rows) => ({
-    skill: rows[0].skill,
-    harness: rows[0].harness,
-    scenarios: rows.length,
-    pass_all: rows.filter((r) => r.pass).length,
-    pass_rate: mean(rows.map((r) => r.pass_rate ?? (r.pass ? 1 : 0))),
-    score: mean(rows.map((r) => r.score)),
-    noisy: rows.filter((r) => r.noisy).map((r) => r.scenario),
-  }));
+  return [...groups.entries()].map(([key, rows]) => {
+    const paired = rows.flatMap((r) => {
+      const c = controls.get(`${key}\0${r.scenario}`);
+      return c === undefined ? [] : [{ skill: r, control: c }];
+    });
+    const controlScore = paired.length === 0 ? null : mean(paired.map((p) => p.control.score));
+    return {
+      skill: rows[0].skill,
+      harness: rows[0].harness,
+      scenarios: rows.length,
+      pass_all: rows.filter((r) => r.pass).length,
+      pass_rate: mean(rows.map((r) => r.pass_rate ?? (r.pass ? 1 : 0))),
+      score: mean(rows.map((r) => r.score)),
+      noisy: rows.filter((r) => r.noisy).map((r) => r.scenario),
+      control_score: controlScore,
+      lift:
+        controlScore === null
+          ? null
+          : round4(mean(paired.map((p) => p.skill.score)) - controlScore),
+      no_lift: paired.filter((p) => p.control.pass).map((p) => p.skill.scenario),
+    };
+  });
 }
 
 function formatSkillTable(rows: SkillSummary[]): string {
   const table = [
-    ["skill", "harness", "scenarios", "pass^k", "pass rate", "score", "noisy"],
+    ["skill", "harness", "scenarios", "pass^k", "pass rate", "score", "noisy", "control", "lift"],
     ...rows.map((r) => [
       r.skill,
       r.harness,
@@ -938,6 +991,8 @@ function formatSkillTable(rows: SkillSummary[]): string {
       r.pass_rate.toFixed(2),
       r.score.toFixed(2),
       String(r.noisy.length),
+      r.control_score === null ? "-" : r.control_score.toFixed(2),
+      r.lift === null ? "-" : `${r.lift >= 0 ? "+" : ""}${r.lift.toFixed(2)}`,
     ]),
   ];
   const widths = table[0].map((_, i) => Math.max(...table.map((row) => row[i].length)));

@@ -82,6 +82,18 @@ So is a result with fewer rows than trials, or a row without its checklist and
 With `--trials` above 1, `run` and `sweep` print min, spread, pass count,
 skill-used count, and `NOISY`.
 
+### Control
+
+`--control` runs a scenario without the skill: nothing is installed in the
+workdir, a hidden skill's explicit invocation is dropped from the task, and the
+`skill-used` assertion never fails. Its result sits beside the skill run
+(`<name>--control.json`) with `variant: "control"` in the sidecar, and `sweep
+--control` covers every scenario. `summarize` pairs each scenario with its
+control and adds two columns per skill: the mean control score, and the lift
+(skill score minus control score over the paired scenarios). A scenario whose
+control passes every trial prints as `NO LIFT`: it passes without the skill, so
+it does not test the skill.
+
 ### Agent effort
 
 `--agent-effort low|medium|high|xhigh|max` sets the Claude agent's effort.
@@ -96,8 +108,8 @@ Omitting it leaves Claude Code's default. Only `--harness claude` takes it;
 workdir with the skill under `.grok/skills/`. It uses native streaming events
 to count a completed read of that skill's `SKILL.md` as `skill-used` evidence.
 Grok must be logged in locally or have its supported credentials configured.
-The run disables web search and subagents and grants edit permission in the
-workdir. `--agent` selects a Grok model ID.
+The run disables subagents and grants edit permission in the workdir; web
+search stays on. `--agent` selects a Grok model ID.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed
@@ -200,6 +212,7 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
   "judge_model": "claude-opus-5",
   "judge_effort": null,
   "trials": 3,
+  "agent_access": "online",
   "aggregate": { "pass": false, "pass_rate": 0.6667, "score": 0.81, "...": "..." },
   "ran_at": "<ISO timestamp>",
   "tool_version": "<skillcheck version>"
@@ -207,7 +220,8 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
 ```
 
 `summarize` reads those sidecars and refuses to mix skills-tree revisions or
-run configurations (agent model and effort, judge model and effort, trials) in
+run configurations (agent model and effort, judge model and effort, trials, and
+agent access) in
 one scorecard, including retained rows from partial reruns, unless
 `--allow-mixed`. Configurations are compared within a harness, since harnesses
 differ by design. Sidecars written before run configurations were recorded fall
