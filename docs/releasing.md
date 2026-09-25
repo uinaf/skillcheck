@@ -5,15 +5,13 @@
 A push to `main` runs one workflow, `.github/workflows/release.yml`:
 
 ```text
-verify ──┐
-         ├──> release   npm publish, OIDC + uinaf-ci  (release environment)
-scan ────┘
+verify ──> release   npm publish, OIDC + uinaf-ci  (release environment)
 ```
 
-`verify` and `scan` are the shared gate: `verify` is called from `verify.yml`,
-and `scan` calls the shared scan in `uinaf/.github`, the same one `scan.yml`
-runs for pull requests. Keep it that way: a second copy of the gate on a push-to-`main` workflow
-races this one over the same commit.
+`verify` is the one gate, called from `verify.yml`; its last step runs the
+shared push-time scan from `uinaf/.github` over the pushed range. Keep it that
+way: a second copy of the gate on a push-to-`main` workflow races this one over
+the same commit.
 
 The file name `release.yml` is load-bearing. See below.
 
