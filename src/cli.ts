@@ -774,11 +774,11 @@ export function reduceResults(
   entries: ScorecardEntry[];
   skipped: string[];
   gradedAt: Map<string, number>;
-  retired: number;
+  retired: Set<string>;
 } {
   const entries: ScorecardEntry[] = [];
   const skipped: string[] = [];
-  let retired = 0;
+  const retired = new Set<string>();
   const gradedAt = new Map<string, number>();
   const shas = new Set<string>();
   const files = fs.readdirSync(dir);
@@ -795,8 +795,10 @@ export function reduceResults(
     } catch {
       identity = undefined;
     }
-    if (identity !== undefined && !isLive(live, identity)) {
-      retired++;
+    // A file with no scenario in its name or sidecar is not a result at all;
+    // it keeps its skipped-file warning below.
+    if (identity !== undefined && identity.scenario !== "" && !isLive(live, identity)) {
+      retired.add(entryKey(identity));
       continue;
     }
     if (f.endsWith("--cursor.json")) {
@@ -919,7 +921,8 @@ function cmdSummarize(argv: string[]): void {
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const previous = readExistingScorecard(out);
   const existing = previous.filter((e) => isLive(live, e));
-  const retired = retiredResults + previous.length - existing.length;
+  for (const e of previous) if (!isLive(live, e)) retiredResults.add(entryKey(e));
+  const retired = retiredResults.size;
   const skippedKeys = new Set(
     skipped
       .map((file) => ({

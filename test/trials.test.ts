@@ -991,3 +991,29 @@ test("summarize: an unrelated cli/ directory does not make a results-only root l
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("summarize: a retired row counts once, and a stray JSON file still warns", () => {
+  const root = gitRoot();
+  try {
+    const { results, scorecards } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    fs.mkdirSync(scorecards, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    writeGraded(results, "demo--gone", { agent_effort: null, trials: 1 });
+    fs.writeFileSync(path.join(results, "notes.json"), JSON.stringify({ hello: 1 }));
+    const first = runCli(["summarize", "--root", root]);
+    assert.equal(first.rc, 0, first.stderr);
+    assert.match(first.stderr, /skipping notes\.json/);
+    const card = path.join(scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    const rows = JSON.parse(fs.readFileSync(card, "utf8")).scenarios;
+    fs.writeFileSync(
+      card,
+      JSON.stringify({ scenarios: [...rows, { ...rows[0], scenario: "gone" }] }),
+    );
+    const second = runCli(["summarize", "--root", root]);
+    assert.equal(second.rc, 0, second.stderr);
+    assert.match(second.stdout, /dropped 1 row\(s\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
