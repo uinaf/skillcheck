@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { FILE_BLOCK } from "./scenario.ts";
 
 const ALLOWED_KEYS = new Set(["name", "description", "disable-model-invocation"]);
 
@@ -93,15 +94,41 @@ export function lintSkills(root: string): LintReport {
     path.join(root, r),
   );
   const errors: string[] = [];
-  let count = 0;
+  const skills: string[] = [];
   for (const dir of roots) {
     if (!fs.existsSync(dir)) continue;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       // Dot-dirs (.claude-plugin) are plugin metadata, not skill packages.
       if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
       lintSkill(path.join(dir, entry.name), root, errors);
-      count++;
+      skills.push(path.join(dir, entry.name));
     }
   }
-  return { errors, count };
+  lintTasks(skills, root, errors);
+  return { errors, count: skills.length };
+}
+
+// A task that names a skill tells the agent which skill applies, so routing is
+// no longer measured, and a no-skill control can go read the operator's
+// installed copy of it. Any skill in the root counts, not just the one under
+// test. Inline input files are repository state, where a CLI that shares its
+// skill's name legitimately appears, so only the prompt prose is checked.
+function lintTasks(skills: string[], root: string, errors: string[]): void {
+  const names = skills.map((dir) => path.basename(dir));
+  for (const dir of skills) {
+    const evals = path.join(dir, "evals");
+    if (!fs.existsSync(evals)) continue;
+    // Same enumeration as sweep's discovery, so dot-dirs are not skipped.
+    for (const scenario of fs.readdirSync(evals, { withFileTypes: true })) {
+      const file = path.join(evals, scenario.name, "task.md");
+      if (!scenario.isDirectory() || !fs.existsSync(file)) continue;
+      const text = fs.readFileSync(file, "utf8").replace(FILE_BLOCK, "");
+      for (const name of names) {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        if (new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "i").test(text)) {
+          errors.push(`${path.relative(root, file)}: task names skill ${name}`);
+        }
+      }
+    }
+  }
 }
