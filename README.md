@@ -45,7 +45,7 @@ current directory.
 <root>/skills/<skill>/SKILL.md                       linted
 <root>/skills/<skill>/evals/<scenario>/task.md       the problem + input files
 <root>/skills/<skill>/evals/<scenario>/criteria.json the weighted checklist
-<root>/.skillcheck/                                  results, scratch, scorecards
+<root>/.skillcheck/                                  results, scorecards
 ```
 
 `cli/*/skills/<skill>/` is scanned too, for repos that keep a skill next to the
