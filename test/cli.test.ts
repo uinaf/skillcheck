@@ -66,11 +66,15 @@ test("resolveRoot: defaults to cwd, --root overrides and is absolutized", () => 
   assert.equal(resolveRoot(parseArgs(["--root", "/tmp/x"]).flags), "/tmp/x");
 });
 
-test("stateDirs: run state hangs off the root, never off the install", () => {
+test("stateDirs: results stay in the root, scratch lives outside it", () => {
   const d = stateDirs("/tmp/repo");
   assert.equal(d.results, "/tmp/repo/.skillcheck/results");
-  assert.equal(d.scratch, "/tmp/repo/.skillcheck/scratch");
   assert.equal(d.scorecards, "/tmp/repo/.skillcheck/scorecards");
+  const tmp = fs.realpathSync(os.tmpdir());
+  assert.equal(path.dirname(d.scratch), tmp);
+  assert.equal(path.relative("/tmp/repo", d.scratch).startsWith(".."), true);
+  assert.equal(stateDirs("/tmp/repo").scratch, d.scratch, "stable per root");
+  assert.notEqual(stateDirs("/tmp/other").scratch, d.scratch, "distinct per root");
 });
 
 test("toolVersion: reads the installed package version", () => {
@@ -821,6 +825,7 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
       grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+      skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     },
   );
   assert.equal(name, "demo--basic");
@@ -867,6 +872,7 @@ test("generateRun: Grok installs the skill and uses its CLI provider", () => {
         scratchDir: path.join(dir, "scratch"),
         transformPath: path.join(here, "..", "src", "transform.ts"),
         grokProviderPath,
+        skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
       },
     );
     assert.equal(name, "demo--basic--grok");
@@ -881,7 +887,12 @@ test("generateRun: Grok installs the skill and uses its CLI provider", () => {
         label: "trial-1",
       },
     ]);
-    assert.deepEqual(config.tests[0].assert[1], { type: "skill-used", value: "demo" });
+    assert.deepEqual(config.tests[0].assert[1], {
+      type: "javascript",
+      value: `file://${path.join(here, "..", "src", "skill-evidence.ts")}`,
+      metric: "skill-used",
+      config: { skill: "demo", required: true },
+    });
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -893,6 +904,7 @@ test("generateRun: a provider-qualified judge passes through, wrapped only for e
     scratchDir: path.join(dir, "scratch"),
     transformPath: path.join(here, "..", "src", "transform.ts"),
     grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+    skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
   };
   const scenario = path.join(fixtures, "clean", "skills", "demo", "evals", "basic");
 

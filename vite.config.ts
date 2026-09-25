@@ -78,7 +78,7 @@ export default defineConfig({
   },
 
   pack: {
-    entry: ["src/cli.ts", "src/transform.ts", "src/grok-provider.ts"],
+    entry: ["src/cli.ts", "src/transform.ts", "src/grok-provider.ts", "src/skill-evidence.ts"],
     unbundle: true,
     platform: "node",
     format: ["esm"],

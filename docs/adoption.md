@@ -63,7 +63,6 @@ Commit `.skillcheck/scorecards/`. Gitignore the rest:
 
 ```gitignore
 .skillcheck/results/
-.skillcheck/scratch/
 ```
 
 A scorecard is only comparable against the tree it graded and the configuration

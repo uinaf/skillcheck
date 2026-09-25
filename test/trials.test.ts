@@ -42,6 +42,7 @@ function generate(dir: string, opts: Partial<RunOptions>) {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
       grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+      skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     },
   );
 }
@@ -580,6 +581,97 @@ test("reduceResults: a Claude judge's effort is recovered from the result config
     fs.writeFileSync(path.join(dir, "demo--basic.json"), JSON.stringify(raw));
     const [q] = reduceResults(dir, false).entries;
     assert.deepEqual([q.judge_model, q.judge_effort], [qualified.id, "high"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("skill evidence: a skill call or a read of the installed SKILL.md", async () => {
+  const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
+  const dir = tmp("evidence");
+  try {
+    const workdir = path.join(dir, "workdir");
+    fs.mkdirSync(path.join(workdir, ".claude", "skills", "demo"), { recursive: true });
+    fs.writeFileSync(path.join(workdir, ".claude", "skills", "demo", "SKILL.md"), "x");
+    fs.mkdirSync(path.join(dir, "source", "demo"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "source", "demo", "SKILL.md"), "x");
+    const check = (metadata: object, required = true) =>
+      assertSkillUsed("", { vars: { workdir }, config: { skill: "demo", required }, metadata });
+    const read = (file_path: string, is_error = false) => ({
+      toolCalls: [{ name: "Read", input: { file_path }, is_error }],
+    });
+
+    assert.deepEqual(check({ skillCalls: [{ name: "demo" }] }), {
+      pass: true,
+      score: 1,
+      reason: "skill used: skill call demo",
+    });
+    const installed = path.join(workdir, ".claude", "skills", "demo", "SKILL.md");
+    assert.equal(check(read(installed)).pass, true);
+    assert.equal(check(read(".claude/skills/demo/SKILL.md")).pass, true, "relative to workdir");
+    assert.equal(check(read(installed, true)).pass, false, "a failed read is no evidence");
+    assert.equal(
+      check(read(path.join(dir, "source", "demo", "SKILL.md"))).pass,
+      false,
+      "the skill's source outside the workdir is not the installed copy",
+    );
+    assert.equal(check({ skillCalls: [{ name: "other" }] }).pass, false);
+    assert.equal(check({}).pass, false);
+
+    assert.deepEqual(check({}, false), {
+      pass: true,
+      score: 0,
+      reason: "skill demo not loaded (optional for this scenario)",
+    });
+    assert.deepEqual(check(read(installed), false).score, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("classifyResult: optional skill use passes but still reports the skill as unused", () => {
+  const optional = {
+    score: 0.95,
+    success: true,
+    failureReason: 0,
+    gradingResult: {
+      componentResults: [
+        { score: 0.9, pass: true, metadata: { assertionSet: { type: "assert-set" } } },
+        { score: 0, pass: true, assertion: { type: "javascript", metric: "skill-used" } },
+      ],
+    },
+  };
+  assert.deepEqual(classifyResult({ results: { results: [optional] } }), {
+    trials: [{ score: 0.9, pass: true, skillUsed: false }],
+  });
+});
+
+test("generateRun: skill_use optional is carried to the assertion and validated", () => {
+  const dir = tmp("skill-use");
+  try {
+    const skillDir = path.join(dir, "skills", "demo");
+    fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
+      recursive: true,
+    });
+    const criteriaPath = path.join(skillDir, "evals", "basic", "criteria.json");
+    const criteria = JSON.parse(fs.readFileSync(criteriaPath, "utf8"));
+    const paths = {
+      scratchDir: path.join(dir, "scratch"),
+      transformPath: path.join(here, "..", "src", "transform.ts"),
+      grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+      skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
+    };
+    const opts = { harness: "claude" as const, judgeModel: "claude-opus-5" };
+    fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, skill_use: "optional" }));
+    const { configPath } = generateRun(path.join(skillDir, "evals", "basic"), opts, paths);
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    assert.equal(config.tests[0].assert[1].config.required, false);
+
+    fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, skill_use: "sometimes" }));
+    assert.throws(
+      () => generateRun(path.join(skillDir, "evals", "basic"), opts, paths),
+      /skill_use must be "required" or "optional"/,
+    );
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

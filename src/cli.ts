@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { lintSkills } from "./lint.ts";
@@ -82,13 +84,15 @@ export function resolveRoot(flags: Map<string, string | true>): string {
   return path.resolve((flags.get("--root") as string | undefined) ?? process.cwd());
 }
 
-// Run state is disposable except scorecards, and all of it belongs to the
-// consumer repo, never to the installed package.
+// Results and scorecards belong to the consumer repo, never to the installed
+// package. Scratch workdirs live outside the repo: an agent under test inside
+// it can reach the skill's source, its evals, and the repo's own CLAUDE.md.
 export function stateDirs(root: string): { results: string; scratch: string; scorecards: string } {
   const base = path.join(root, ".skillcheck");
+  const id = createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 12);
   return {
     results: path.join(base, "results"),
-    scratch: path.join(base, "scratch"),
+    scratch: path.join(fs.realpathSync(os.tmpdir()), `skillcheck-${id}`),
     scorecards: path.join(base, "scorecards"),
   };
 }
@@ -259,7 +263,7 @@ interface Stats {
 interface Component {
   score?: unknown;
   pass?: unknown;
-  assertion?: { type?: unknown } | null;
+  assertion?: { type?: unknown; metric?: unknown } | null;
   metadata?: { assertionSet?: { type?: unknown } } | null;
 }
 
@@ -338,11 +342,15 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
     ? (res.gradingResult.componentResults as (Component | null)[])
     : [];
   const checklist = components.find((c) => c?.metadata?.assertionSet?.type === "assert-set");
-  const skillUsed = components.find((c) => c?.assertion?.type === "skill-used");
-  if (typeof checklist?.score !== "number" || typeof skillUsed?.pass !== "boolean") {
+  // Results before the evidence assertion used promptfoo's built-in type,
+  // whose score equals its pass; an optional one passes with score 0.
+  const skillUsed = components.find(
+    (c) => c?.assertion?.type === "skill-used" || c?.assertion?.metric === "skill-used",
+  );
+  if (typeof checklist?.score !== "number" || typeof skillUsed?.score !== "number") {
     return { error: "promptfoo result carried no checklist or skill-used verdict" };
   }
-  return { score: checklist.score, pass: res.success, skillUsed: skillUsed.pass };
+  return { score: checklist.score, pass: res.success, skillUsed: skillUsed.score >= 1 };
 }
 
 // Spread at or above this, or a mix of passes and fails, marks a scenario
@@ -418,6 +426,7 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
     scratchDir: dirs.scratch,
     transformPath: path.join(here, `transform${selfExt}`),
     grokProviderPath: path.join(here, `grok-provider${selfExt}`),
+    skillEvidencePath: path.join(here, `skill-evidence${selfExt}`),
   });
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);

@@ -15,6 +15,8 @@ export interface ChecklistItem {
 export interface Criteria {
   type: string;
   context?: string;
+  // "optional" for out-of-lane scenarios where declining the skill is correct.
+  skill_use?: "required" | "optional";
   checklist: ChecklistItem[];
 }
 
@@ -54,6 +56,7 @@ export interface RunPaths {
   scratchDir: string;
   transformPath: string;
   grokProviderPath: string;
+  skillEvidencePath: string;
 }
 
 export function loadScenario(scenarioDir: string): Scenario {
@@ -74,6 +77,13 @@ export function loadScenario(scenarioDir: string): Scenario {
     criteria.checklist.length === 0
   ) {
     throw new Error(`unsupported or empty criteria in ${scenarioDir}`);
+  }
+  if (
+    criteria.skill_use !== undefined &&
+    criteria.skill_use !== "required" &&
+    criteria.skill_use !== "optional"
+  ) {
+    throw new Error(`skill_use must be "required" or "optional" in ${scenarioDir}`);
   }
   for (const item of criteria.checklist) {
     const ok =
@@ -351,7 +361,7 @@ export function buildConfig(
       providers: [trialLabel(i)],
       vars: { task: s.prompt, workdir: t.workdir, manifest: t.manifestPath },
       // Both the weighted checklist and the separate skill-used assertion
-      // must pass.
+      // must pass, unless the scenario makes skill use optional.
       assert: [
         {
           type: "assert-set",
@@ -362,7 +372,12 @@ export function buildConfig(
             weight: item.max_score,
           })),
         },
-        { type: "skill-used", value: s.skill },
+        {
+          type: "javascript",
+          value: `file://${paths.skillEvidencePath}`,
+          metric: "skill-used",
+          config: { skill: s.skill, required: s.criteria.skill_use !== "optional" },
+        },
       ],
     })),
   };

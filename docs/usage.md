@@ -38,7 +38,7 @@ skillcheck run <scenario-dir> --harness grok
 skillcheck run <scenario-dir> --trials 3 --agent-effort medium
 ```
 
-Materializes the scenario into `<root>/.skillcheck/scratch/<name>/trial-<n>/workdir`,
+Materializes the scenario into a temp-dir workdir per trial ([workdir](scenarios.md#the-workdir)),
 installs the skill under test into that workdir, drives the agent, and grades
 the files it wrote. Exit 0 means pass, 1 means graded fail, and 2 means error.
 Exit 2 covers missing usable promptfoo output or optional eval peers. The
@@ -218,9 +218,10 @@ becomes `mixed` and per-entry shas remain. A result with no sidecar reduces as
 
 ## State
 
-`<root>/.skillcheck/` holds `scratch/` and `results/`, both disposable and safe
-to gitignore, and `scorecards/`, which is meant to be committed. Nothing is ever
-written inside the installed package.
+`<root>/.skillcheck/` holds `results/`, disposable and safe to gitignore, and
+`scorecards/`, which is meant to be committed. Scratch workdirs live under the
+system temp dir, outside the root. Nothing is ever written inside the installed
+package.
 
 ## Auth
 

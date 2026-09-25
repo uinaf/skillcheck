@@ -11,8 +11,10 @@ interface TransformContext {
 // Rubric judges choke on very large graded outputs (observed: a 117KB
 // transcript+deliverable dump returned "No output" for every rubric call).
 // Cap each file and the total; truncation is explicit so the judge knows.
-const PER_FILE_CAP = 4_000;
-const TOTAL_CAP = 24_000;
+// 4KB per file was too small: judges failed workflow rubrics on steps they
+// could not see past the cut.
+const PER_FILE_CAP = 16_000;
+const TOTAL_CAP = 64_000;
 
 // String.slice can split a surrogate pair; back off one unit when it would.
 function safeSlice(text: string, end: number): string {
