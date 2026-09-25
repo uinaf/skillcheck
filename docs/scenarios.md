@@ -35,6 +35,7 @@ own examiner or embed generated dependencies.
 
 Write the task the way a user would write it. Do not name the skill, describe
 its steps, or hint at the checklist: routing is part of what is being measured.
+`skillcheck lint` rejects a task whose prose names any skill in the root.
 
 ## criteria.json
 

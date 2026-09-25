@@ -20,6 +20,9 @@ Checks each `<root>/skills/<skill>/`:
 - `disable-model-invocation`, when present, is the bare YAML boolean `true`.
   A quoted `"true"` is an error
 - Relative links in the body resolve on disk
+- No eval `task.md` names a skill from the root, outside its inline input
+  files. A named skill gives routing away, and a no-skill control can read
+  the operator's installed copy
 
 Code spans and fenced blocks are stripped before links are checked, so example
 links never fail. External schemes and `#anchors` pass. Dot-directories under

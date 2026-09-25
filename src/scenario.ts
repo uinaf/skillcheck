@@ -4,6 +4,9 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
+// An inline input file in task.md, materialized into the workdir.
+export const FILE_BLOCK = /^=+ FILE: (.+?) =+\n([\s\S]*?)\n=+ END FILE =+$/gm;
+
 export type Harness = "claude" | "codex" | "grok";
 
 export interface ChecklistItem {
@@ -99,8 +102,7 @@ export function loadScenario(scenarioDir: string): Scenario {
   }
 
   const files: Scenario["files"] = [];
-  const fileBlock = /^=+ FILE: (.+?) =+\n([\s\S]*?)\n=+ END FILE =+$/gm;
-  const task = taskMd.replace(fileBlock, (_, name: string, content: string) => {
+  const task = taskMd.replace(FILE_BLOCK, (_, name: string, content: string) => {
     files.push({ name: name.trim(), content: content + "\n" });
     return `(Input file \`${name.trim()}\` is available in your working directory.)`;
   });

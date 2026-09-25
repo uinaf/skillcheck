@@ -1014,11 +1014,12 @@ test("lint: broken fixture tree fails with each finding named", () => {
   assert.match(r.stderr, /frontmatter name "mismatched" != directory wrongname/);
   assert.match(r.stderr, /disable-model-invocation must be the literal boolean true/);
   assert.match(r.stderr, /link target does not exist: does-not-exist\.md/);
-  assert.match(r.stderr, /skill lint: 4 error\(s\) across 1 package\(s\)/);
+  assert.match(r.stderr, /^skills\/wrongname\/evals\/leak\/task\.md: task names skill wrongname$/m);
+  assert.match(r.stderr, /skill lint: 5 error\(s\) across 1 package\(s\)/);
   // Every finding is named relative to the linted root, not by absolute path.
   const findings = r.stderr.trim().split("\n").slice(0, -1);
-  assert.equal(findings.length, 4);
-  for (const line of findings) assert.match(line, /^skills\/wrongname\/SKILL\.md: \S/);
+  assert.equal(findings.length, 5);
+  for (const line of findings) assert.match(line, /^skills\/wrongname\/\S+: \S/);
 });
 
 test("lint: --root is equivalent to the positional root", () => {
