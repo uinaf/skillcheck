@@ -460,6 +460,9 @@ function writeGraded(
 test("summarize: refuses to merge runs with different agent effort or trials", () => {
   const root = gitRoot();
   try {
+    const evals = path.join(root, "skills", "demo", "evals");
+    for (const name of ["one", "two", "three"])
+      fs.cpSync(path.join(evals, "basic"), path.join(evals, name), { recursive: true });
     const { results, scorecards } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
     writeGraded(results, "demo--one", { agent_effort: "medium", trials: 3 });
@@ -888,5 +891,129 @@ test("codex: each run gets a home with the login and none of the operator's skil
     if (saved === undefined) delete process.env.CODEX_HOME;
     else process.env.CODEX_HOME = saved;
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("summarize: drops carried and fresh rows for scenarios no longer in the tree", () => {
+  const root = gitRoot();
+  try {
+    const { results, scorecards } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    fs.mkdirSync(scorecards, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    writeGraded(results, "demo--gone", { agent_effort: null, trials: 1 });
+    const card = path.join(scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    fs.writeFileSync(card, JSON.stringify({ scenarios: [] }));
+    const first = runCli(["summarize", "--root", root]);
+    assert.equal(first.rc, 0, first.stderr);
+    assert.match(first.stdout, /dropped 1 row\(s\) for scenarios no longer in the tree/);
+    const rows = JSON.parse(fs.readFileSync(card, "utf8")).scenarios;
+    assert.deepEqual(
+      rows.map((r: ScorecardEntry) => r.scenario),
+      ["basic"],
+    );
+
+    // A row carried from an earlier scorecard is dropped the same way.
+    fs.rmSync(path.join(results, "demo--gone.json"));
+    fs.rmSync(path.join(results, "demo--gone.meta.json"));
+    fs.writeFileSync(
+      card,
+      JSON.stringify({ scenarios: [...rows, { ...rows[0], scenario: "retired" }] }),
+    );
+    const second = runCli(["summarize", "--root", root]);
+    assert.equal(second.rc, 0, second.stderr);
+    assert.match(second.stdout, /dropped 1 row/);
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(card, "utf8")).scenarios.map((r: ScorecardEntry) => r.scenario),
+      ["basic"],
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize: a retired scenario's stale revision or failed attempt does not block cleanup", () => {
+  const root = gitRoot();
+  try {
+    const { results, scorecards } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    writeGraded(results, "demo--gone", { agent_effort: null, trials: 1 });
+    const meta = path.join(results, "demo--gone.meta.json");
+    fs.writeFileSync(
+      meta,
+      JSON.stringify({ ...JSON.parse(fs.readFileSync(meta, "utf8")), skills_tree_sha: "old" }),
+    );
+    fs.writeFileSync(
+      path.join(results, "demo--renamed.json.attempt"),
+      JSON.stringify({ skill: "demo", scenario: "renamed", harness: "claude" }),
+    );
+    const card = path.join(scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    fs.mkdirSync(scorecards, { recursive: true });
+    fs.writeFileSync(card, JSON.stringify({ scenarios: [] }));
+    const r = runCli(["summarize", "--root", root]);
+    assert.equal(r.rc, 0, r.stderr);
+    assert.match(r.stdout, /1 scenario\(s\)/);
+    assert.match(r.stdout, /dropped 2 row\(s\)/);
+    assert.doesNotMatch(r.stdout, /carried over/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize: deleting the last scenario drops its rows too", () => {
+  const root = gitRoot();
+  try {
+    const { results } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    fs.rmSync(path.join(root, "skills", "demo", "evals"), { recursive: true });
+    const r = runCli(["summarize", "--root", root]);
+    assert.equal(r.rc, 0, r.stderr);
+    assert.match(r.stdout, /0 scenario\(s\)/);
+    assert.match(r.stdout, /dropped 1 row/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize: an unrelated cli/ directory does not make a results-only root live", () => {
+  const root = tmp("results-only-cli");
+  try {
+    const { results } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    fs.mkdirSync(path.join(root, "cli", "tool", "src"), { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    const r = runCli(["summarize", "--root", root]);
+    assert.equal(r.rc, 0, r.stderr);
+    assert.match(r.stdout, /1 scenario\(s\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("summarize: a retired row counts once, and a stray JSON file still warns", () => {
+  const root = gitRoot();
+  try {
+    const { results, scorecards } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    fs.mkdirSync(scorecards, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    writeGraded(results, "demo--gone", { agent_effort: null, trials: 1 });
+    fs.writeFileSync(path.join(results, "notes.json"), JSON.stringify({ hello: 1 }));
+    const first = runCli(["summarize", "--root", root]);
+    assert.equal(first.rc, 0, first.stderr);
+    assert.match(first.stderr, /skipping notes\.json/);
+    const card = path.join(scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
+    const rows = JSON.parse(fs.readFileSync(card, "utf8")).scenarios;
+    fs.writeFileSync(
+      card,
+      JSON.stringify({ scenarios: [...rows, { ...rows[0], scenario: "gone" }] }),
+    );
+    const second = runCli(["summarize", "--root", root]);
+    assert.equal(second.rc, 0, second.stderr);
+    assert.match(second.stdout, /dropped 1 row\(s\)/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

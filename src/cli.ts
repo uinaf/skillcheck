@@ -575,6 +575,28 @@ function readJson(file: string): unknown {
   }
 }
 
+// The live (skill, scenario) pairs under a root, or undefined for a root with
+// no skills tree, which holds results only. A scenario deleted from the tree,
+// even the last one, must not live on through a leftover result or a carried row.
+export function liveScenarios(root: string): Set<string> | undefined {
+  const cli = path.join(root, "cli");
+  const hasTree =
+    fs.existsSync(path.join(root, "skills")) ||
+    (fs.existsSync(cli) &&
+      fs.readdirSync(cli).some((d) => fs.existsSync(path.join(cli, d, "skills"))));
+  if (!hasTree) return undefined;
+  return new Set(
+    discoverScenarios(root).map((dir) => {
+      const parts = dir.split(path.sep);
+      return `${parts.at(-3)}\0${parts.at(-1)}`;
+    }),
+  );
+}
+
+function isLive(live: Set<string> | undefined, e: { skill: string; scenario: string }): boolean {
+  return live === undefined || live.has(`${e.skill}\0${e.scenario}`);
+}
+
 function discoverScenarios(root: string): string[] {
   const roots = [path.join(root, "skills")];
   const cliDir = path.join(root, "cli");
@@ -746,14 +768,17 @@ interface Usage {
 export function reduceResults(
   dir: string,
   allowMixed: boolean,
+  live?: Set<string>,
 ): {
   treeSha: string;
   entries: ScorecardEntry[];
   skipped: string[];
   gradedAt: Map<string, number>;
+  retired: Set<string>;
 } {
   const entries: ScorecardEntry[] = [];
   const skipped: string[] = [];
+  const retired = new Set<string>();
   const gradedAt = new Map<string, number>();
   const shas = new Set<string>();
   const files = fs.readdirSync(dir);
@@ -762,6 +787,20 @@ export function reduceResults(
   );
   const results = files.filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"));
   for (const f of [...new Set([...results, ...incomplete])].sort()) {
+    // Retired scenarios are excluded before any validation: their stale
+    // revisions and failed attempts are not this tree's concern.
+    let identity: Identity | undefined;
+    try {
+      identity = resultIdentity(f, dir);
+    } catch {
+      identity = undefined;
+    }
+    // A file with no scenario in its name or sidecar is not a result at all;
+    // it keeps its skipped-file warning below.
+    if (identity !== undefined && identity.scenario !== "" && !isLive(live, identity)) {
+      retired.add(entryKey(identity));
+      continue;
+    }
     if (f.endsWith("--cursor.json")) {
       console.error(`skipping ${f}: Cursor harness is retired`);
       skipped.push(f);
@@ -814,7 +853,7 @@ export function reduceResults(
     );
   }
   const treeSha = shas.size === 1 ? [...shas][0] : shas.size === 0 ? "none" : "mixed";
-  return { treeSha, entries, skipped, gradedAt };
+  return { treeSha, entries, skipped, gradedAt, retired };
 }
 
 // One scenario's identity in a scorecard. Rerunning a subset must update those
@@ -867,16 +906,23 @@ function readExistingScorecard(out: string): ScorecardEntry[] {
 function cmdSummarize(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
-  const dirs = stateDirs(resolveRoot(flags));
+  const root = resolveRoot(flags);
+  const dirs = stateDirs(root);
   if (!fs.existsSync(dirs.results))
     fail(`no results directory at ${dirs.results}; run some evals first`);
-  const { entries, skipped, gradedAt } = reduceResults(
-    dirs.results,
-    flags.get("--allow-mixed") === true,
-  );
+  const live = liveScenarios(root);
+  const {
+    entries,
+    skipped,
+    gradedAt,
+    retired: retiredResults,
+  } = reduceResults(dirs.results, flags.get("--allow-mixed") === true, live);
   fs.mkdirSync(dirs.scorecards, { recursive: true });
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
-  const existing = readExistingScorecard(out);
+  const previous = readExistingScorecard(out);
+  const existing = previous.filter((e) => isLive(live, e));
+  for (const e of previous) if (!isLive(live, e)) retiredResults.add(entryKey(e));
+  const retired = retiredResults.size;
   const skippedKeys = new Set(
     skipped
       .map((file) => ({
@@ -910,6 +956,7 @@ function cmdSummarize(argv: string[]): void {
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
+  if (retired > 0) console.log(`dropped ${retired} row(s) for scenarios no longer in the tree`);
   const scenarios = merged.entries.filter((e) => e.variant !== "control");
   console.log(
     `${out}: ${scenarios.length} scenario(s), ${scenarios.filter((e) => e.pass).length} passing, ${merged.entries.length - scenarios.length} control(s), ${skipped.length} skipped file(s)`,
