@@ -116,8 +116,12 @@ export function lintSkills(root: string): LintReport {
 function lintTasks(skills: string[], root: string, errors: string[]): void {
   const names = skills.map((dir) => path.basename(dir));
   for (const dir of skills) {
-    for (const task of fs.globSync("evals/*/task.md", { cwd: dir })) {
-      const file = path.join(dir, task);
+    const evals = path.join(dir, "evals");
+    if (!fs.existsSync(evals)) continue;
+    // Same enumeration as sweep's discovery, so dot-dirs are not skipped.
+    for (const scenario of fs.readdirSync(evals, { withFileTypes: true })) {
+      const file = path.join(evals, scenario.name, "task.md");
+      if (!scenario.isDirectory() || !fs.existsSync(file)) continue;
       const text = fs.readFileSync(file, "utf8").replace(FILE_BLOCK, "");
       for (const name of names) {
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
