@@ -576,16 +576,17 @@ function readJson(file: string): unknown {
 }
 
 // The live (skill, scenario) pairs under a root, or undefined for a root with
-// no scenarios at all, which is a results-only directory. A scenario deleted
-// from the tree must not live on through a leftover result or a carried row.
+// no skills tree, which holds results only. A scenario deleted from the tree,
+// even the last one, must not live on through a leftover result or a carried row.
 export function liveScenarios(root: string): Set<string> | undefined {
-  const live = new Set(
+  if (!fs.existsSync(path.join(root, "skills")) && !fs.existsSync(path.join(root, "cli")))
+    return undefined;
+  return new Set(
     discoverScenarios(root).map((dir) => {
       const parts = dir.split(path.sep);
       return `${parts.at(-3)}\0${parts.at(-1)}`;
     }),
   );
-  return live.size === 0 ? undefined : live;
 }
 
 function isLive(live: Set<string> | undefined, e: { skill: string; scenario: string }): boolean {

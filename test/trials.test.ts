@@ -960,3 +960,19 @@ test("summarize: a retired scenario's stale revision or failed attempt does not 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("summarize: deleting the last scenario drops its rows too", () => {
+  const root = gitRoot();
+  try {
+    const { results } = stateDirs(root);
+    fs.mkdirSync(results, { recursive: true });
+    writeGraded(results, "demo--basic", { agent_effort: null, trials: 1 });
+    fs.rmSync(path.join(root, "skills", "demo", "evals"), { recursive: true });
+    const r = runCli(["summarize", "--root", root]);
+    assert.equal(r.rc, 0, r.stderr);
+    assert.match(r.stdout, /0 scenario\(s\)/);
+    assert.match(r.stdout, /dropped 1 row/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
