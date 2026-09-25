@@ -179,6 +179,11 @@ six of twenty-nine scenarios therefore leaves twenty-nine rows in the file, not
 six. A same-date file that cannot be parsed stops the write instead of being
 overwritten.
 
+Rows for scenarios that no longer exist in the tree, whether carried from
+today's scorecard or left in `results/`, are dropped and counted on stdout.
+A root with no scenarios at all is treated as a results-only directory and
+keeps every row.
+
 Files that are not promptfoo results and ungraded transport errors are skipped
 with a warning rather than failing the reduction. Graded assertion failures
 remain scored results. If a skipped file matches an existing scorecard row,

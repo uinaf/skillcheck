@@ -575,6 +575,24 @@ function readJson(file: string): unknown {
   }
 }
 
+// A scenario deleted from the tree must not live on through a carried-over
+// scorecard row or a leftover result. A root with no scenarios at all is a
+// results-only directory, so nothing is dropped there.
+export function dropRetired(
+  entries: ScorecardEntry[],
+  root: string,
+): { kept: ScorecardEntry[]; retired: number } {
+  const live = new Set(
+    discoverScenarios(root).flatMap((dir) => {
+      const m = dir.match(/skills\/([^/]+)\/evals\/([^/]+)$/);
+      return m === null ? [] : [`${m[1]}\0${m[2]}`];
+    }),
+  );
+  if (live.size === 0) return { kept: entries, retired: 0 };
+  const kept = entries.filter((e) => live.has(`${e.skill}\0${e.scenario}`));
+  return { kept, retired: entries.length - kept.length };
+}
+
 function discoverScenarios(root: string): string[] {
   const roots = [path.join(root, "skills")];
   const cliDir = path.join(root, "cli");
@@ -867,7 +885,8 @@ function readExistingScorecard(out: string): ScorecardEntry[] {
 function cmdSummarize(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
-  const dirs = stateDirs(resolveRoot(flags));
+  const root = resolveRoot(flags);
+  const dirs = stateDirs(root);
   if (!fs.existsSync(dirs.results))
     fail(`no results directory at ${dirs.results}; run some evals first`);
   const { entries, skipped, gradedAt } = reduceResults(
@@ -895,7 +914,9 @@ function cmdSummarize(argv: string[]): void {
       "skipped rerun matches an existing score; refusing to carry it or overwrite the scorecard",
     );
   }
-  const merged = mergeScorecard(existing, entries);
+  const combined = mergeScorecard(existing, entries);
+  const { kept, retired } = dropRetired(combined.entries, root);
+  const merged = { entries: kept, carried: combined.carried };
   const treeSha = treeShaOf(merged.entries);
   const allowMixed = flags.get("--allow-mixed") === true;
   if (treeSha === "mixed" && !allowMixed) {
@@ -910,6 +931,7 @@ function cmdSummarize(argv: string[]): void {
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
+  if (retired > 0) console.log(`dropped ${retired} row(s) for scenarios no longer in the tree`);
   const scenarios = merged.entries.filter((e) => e.variant !== "control");
   console.log(
     `${out}: ${scenarios.length} scenario(s), ${scenarios.filter((e) => e.pass).length} passing, ${merged.entries.length - scenarios.length} control(s), ${skipped.length} skipped file(s)`,
