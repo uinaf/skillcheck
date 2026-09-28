@@ -18,51 +18,64 @@ export default defineConfig({
   run: {
     tasks: {
       format: {
-        ...stableShell,
-        cache: true,
+        cache: {
+          ...stableShell,
+          input: [
+            ...graphInputs,
+            ".github/**",
+            "docs/**",
+            "scripts/**",
+            "src/**",
+            "test/**",
+            "*.md",
+          ],
+        },
         command: "vp fmt --check",
-        input: [...graphInputs, ".github/**", "docs/**", "scripts/**", "src/**", "test/**", "*.md"],
       },
       lint: {
-        ...stableShell,
-        cache: true,
+        cache: {
+          ...stableShell,
+          input: [...graphInputs, "scripts/**", "src/**", "test/**/*.ts"],
+        },
         command: "vp lint",
-        input: [...graphInputs, "scripts/**", "src/**", "test/**/*.ts"],
       },
       pack: {
-        ...stableShell,
-        cache: true,
+        cache: {
+          ...stableShell,
+          input: [...graphInputs, "src/**"],
+          output: ["dist/**"],
+        },
         command: "vp pack",
-        input: [...graphInputs, "src/**"],
-        output: ["dist/**"],
       },
       test: {
-        ...stableShell,
-        cache: true,
+        cache: {
+          ...stableShell,
+          input: [
+            ...graphInputs,
+            "dist/**",
+            "src/**",
+            "scripts/**",
+            "test/release-commit.test.ts",
+            "test/cli.test.ts",
+            "test/grok-provider.test.ts",
+            "test/transform.test.ts",
+            "test/trials.test.ts",
+            "test/fixtures/**",
+          ],
+          output: [],
+        },
         command:
           "vp test run test/cli.test.ts test/grok-provider.test.ts test/release-commit.test.ts test/transform.test.ts test/trials.test.ts",
         dependsOn: ["pack"],
-        input: [
-          ...graphInputs,
-          "dist/**",
-          "src/**",
-          "scripts/**",
-          "test/release-commit.test.ts",
-          "test/cli.test.ts",
-          "test/grok-provider.test.ts",
-          "test/transform.test.ts",
-          "test/trials.test.ts",
-          "test/fixtures/**",
-        ],
-        output: [],
       },
       consumer: {
-        ...stableShell,
-        cache: true,
+        cache: {
+          ...stableShell,
+          input: [...graphInputs, "dist/**", "test/consumer.test.ts", "test/fixtures/clean/**"],
+          output: [],
+        },
         command: "vp test run test/consumer.test.ts",
         dependsOn: ["pack"],
-        input: [...graphInputs, "dist/**", "test/consumer.test.ts", "test/fixtures/clean/**"],
-        output: [],
       },
       ready: {
         cache: false,
