@@ -142,8 +142,12 @@ export default class GrokProvider {
           cost = event.total_cost_usd;
         }
       };
-      child.stdout?.on("data", (chunk: Buffer) => {
-        stdout += chunk.toString("utf8");
+      // Decode on the stream so a multibyte character split across chunks
+      // survives intact.
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk: string) => {
+        stdout += chunk;
         if (stdout.length > OUTPUT_CAP) {
           stop("grok event stream exceeded limit");
           return;
@@ -155,8 +159,8 @@ export default class GrokProvider {
           newline = stdout.indexOf("\n");
         }
       });
-      child.stderr?.on("data", (chunk: Buffer) => {
-        stderr = (stderr + chunk.toString("utf8")).slice(-STDERR_CAP);
+      child.stderr?.on("data", (chunk: string) => {
+        stderr = (stderr + chunk).slice(-STDERR_CAP);
       });
       child.on("error", (cause) => {
         error ??= `grok could not start: ${cause.message}`;

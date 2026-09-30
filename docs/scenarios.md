@@ -109,7 +109,7 @@ frontmatter block; body text mentioning the key does not count.
 ## The workdir
 
 Per run, under a scratch directory in the system temp dir
-(`skillcheck-<hash of the root>/<name>/trial-<n>/`), rebuilt from scratch each
+(`skillcheck-<uid>-<hash of the root>/<name>/trial-<n>/`), rebuilt from scratch each
 time. It stays outside the root so the agent cannot reach the skill's source,
 its evals, or the repository's own agent guidance. The skill under test is installed where the harness discovers skills:
 `.claude/skills/<skill>/`, plus `.agents/skills/<skill>/` on codex, or
