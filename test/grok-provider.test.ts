@@ -104,6 +104,26 @@ test("Grok provider treats an incomplete turn as an error", async () => {
   }
 });
 
+test("Grok provider keeps a multibyte character split across stdout chunks", async () => {
+  const fixtureRun = fixture([]);
+  const text = JSON.stringify({ type: "text", data: "café ☕" }) + "\n";
+  const end = JSON.stringify({ type: "end", stopReason: "end_turn" }) + "\n";
+  // Split inside the three-byte "☕" and pause so the halves arrive as separate chunks.
+  const split = Buffer.from(text).indexOf(Buffer.from("☕")) + 1;
+  fs.writeFileSync(
+    fixtureRun.command,
+    `#!${process.execPath}\nconst bytes = Buffer.from(${JSON.stringify(text + end)});\nprocess.stdout.write(bytes.subarray(0, ${split}));\nsetTimeout(() => process.stdout.write(bytes.subarray(${split})), 100);\n`,
+  );
+  try {
+    const result = await new GrokProvider({
+      config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
+    }).callApi("task");
+    assert.deepEqual(result, { output: "café ☕", metadata: { skillCalls: [] } });
+  } finally {
+    fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
+  }
+});
+
 for (const stdio of ["ignore", "inherit"] as const)
   test(`Grok provider stops helpers with ${stdio} stdio`, async () => {
     if (process.platform === "win32") return;

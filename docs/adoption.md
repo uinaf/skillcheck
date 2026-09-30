@@ -10,7 +10,9 @@ pnpm add -D @uinaf/skillcheck
 ```
 
 Runners that install with `--ignore-scripts` are fine: the package ships
-compiled ESM and has no install, prepare, or postinstall script.
+compiled ESM and has no install or postinstall script. Its `prepare` script
+only wires this repository's own commit hook; package managers do not run it
+for a registry install.
 
 ```json
 { "scripts": { "skills:lint": "skillcheck lint" } }
@@ -25,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
@@ -33,7 +36,8 @@ jobs:
 ```
 
 The job needs no secrets and no network beyond the install. Node 24 is the
-floor.
+floor. `pnpm/action-setup` installs the pnpm version pinned in the repo's
+`packageManager` field; hosted runners do not ship pnpm.
 
 Run it through the script rather than a bare `npx skillcheck`: the script
 resolves the version the repo pinned, and `npx` would resolve the latest one on

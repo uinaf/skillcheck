@@ -75,6 +75,11 @@ test("stateDirs: results stay in the root, scratch lives outside it", () => {
   assert.equal(path.relative("/tmp/repo", d.scratch).startsWith(".."), true);
   assert.equal(stateDirs("/tmp/repo").scratch, d.scratch, "stable per root");
   assert.notEqual(stateDirs("/tmp/other").scratch, d.scratch, "distinct per root");
+  assert.notEqual(
+    stateDirs("/tmp/repo", 1001).scratch,
+    stateDirs("/tmp/repo", 1002).scratch,
+    "distinct per user on a shared temp dir",
+  );
 });
 
 test("toolVersion: reads the installed package version", () => {

@@ -87,12 +87,18 @@ export function resolveRoot(flags: Map<string, string | true>): string {
 // Results and scorecards belong to the consumer repo, never to the installed
 // package. Scratch workdirs live outside the repo: an agent under test inside
 // it can reach the skill's source, its evals, and the repo's own CLAUDE.md.
-export function stateDirs(root: string): { results: string; scratch: string; scorecards: string } {
+// The temp dir may be shared, and ensurePrivateDir rejects a scratch root
+// another user owns, so the name carries the UID as well as the root.
+export function stateDirs(
+  root: string,
+  uid: number | undefined = process.getuid?.(),
+): { results: string; scratch: string; scorecards: string } {
   const base = path.join(root, ".skillcheck");
   const id = createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 12);
+  const owner = uid === undefined ? "" : `${uid}-`;
   return {
     results: path.join(base, "results"),
-    scratch: path.join(fs.realpathSync(os.tmpdir()), `skillcheck-${id}`),
+    scratch: path.join(fs.realpathSync(os.tmpdir()), `skillcheck-${owner}${id}`),
     scorecards: path.join(base, "scorecards"),
   };
 }
@@ -211,7 +217,7 @@ export function assertUniformConfig(
 // command, not crash into a resolution error. Exit 2: a missing engine is an
 // environment error, never a graded verdict.
 function ensureEvalPackages(opts: RunOptions): void {
-  const missing = requiredEvalPackages(opts, process.env.ANTHROPIC_API_KEY !== undefined).filter(
+  const missing = requiredEvalPackages(opts, Boolean(process.env.ANTHROPIC_API_KEY)).filter(
     (pkg) => resolvePackageDir(pkg) === undefined,
   );
   if (missing.length === 0) return;
@@ -519,9 +525,12 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
 }
 
 function judgeName(judge: unknown): string {
-  // Provider-qualified judge IDs are recorded verbatim. Bare Anthropic IDs
-  // lose their provider prefix; SDK judge objects carry the model in config,
-  // while wrapped providers carry it in id.
+  // Only results written before run configs were recorded reach this. A
+  // string judge "anthropic:messages:X" is either a bare --judge X expanded
+  // for ANTHROPIC_API_KEY or a provider-qualified --judge with that exact ID,
+  // and the config cannot tell them apart; read it as the bare default.
+  // Other provider-qualified IDs are recorded verbatim. SDK judge objects
+  // carry the model in config, while wrapped providers carry it in id.
   if (typeof judge === "string") return judge.replace(/^anthropic:messages:/, "");
   const j = judge as { id?: unknown; config?: { model?: unknown; effort?: unknown } } | null;
   const name = j?.config?.model ?? j?.id;
