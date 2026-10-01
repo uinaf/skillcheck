@@ -81,14 +81,18 @@ skillcheck runs as root and reads the repository from `/srv`, which only root
 can enter. Each agent binary starts through a wrapper that drops to the
 unprivileged `agent` user, which owns only its workdir and the run's homes; the
 run's promptfoo config and manifests, which carry the criteria, and promptfoo's
-own state stay root-only. The image's home is empty. Pass Claude gateway auth
+own state stay root-only. Start one container per `run` or `sweep`
+invocation, as above: agents in one container share the agent user, so a
+control must never share a container with a skill run. The image's home is
+empty. Pass Claude gateway auth
 through the env file ([auth](#auth)) and mount a Codex `config.toml` written for
 the run that names only the model provider and its auth, never the operator's
 own; a token its auth command reads must be readable by the agent user. Codex's
 namespace sandbox cannot start inside a container, so skillcheck runs it with
 full access there; the container and the user drop are the boundary. A run
-counts as isolated only when the image's marker variable and a container
-runtime's marker file are both present; results record `isolated` in their run
+counts as isolated only inside a container, with the image's marker variable,
+skillcheck running as root, an agent user configured, and the wrapper
+installed; results record `isolated` in their run
 configuration, so `summarize` refuses to mix isolated and host rows and `sweep`
 reruns host results.
 

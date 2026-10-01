@@ -187,15 +187,21 @@ export function stripHiddenFlag(skillMd: string): string {
 }
 
 // Inline destinations, bare or in angle brackets, and reference definitions.
-// Inside the isolated image: its env marker plus a container runtime's marker
-// file, so the variable alone on a host cannot claim isolation or turn off the
-// Codex sandbox.
+// Inside the isolated image: its env marker, a container runtime's marker
+// file, skillcheck running as root, an agent user to drop to, and the agent
+// wrapper installed. The variable alone, or a plain container, cannot claim
+// isolation or turn off the Codex sandbox.
 export function isIsolated(): boolean {
   return (
     process.env.SKILLCHECK_ISOLATED === "1" &&
-    (fs.existsSync("/.dockerenv") || fs.existsSync("/run/.containerenv"))
+    (fs.existsSync("/.dockerenv") || fs.existsSync("/run/.containerenv")) &&
+    process.getuid?.() === 0 &&
+    Number.isInteger(Number(process.env.SKILLCHECK_AGENT_UID)) &&
+    fs.existsSync(AGENT_WRAPPER)
   );
 }
+
+const AGENT_WRAPPER = "/usr/local/libexec/skillcheck/agent-wrapper.sh";
 
 const MARKDOWN_LINK = /\]\(\s*<([^>]+)>|\]\(\s*([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm;
 
