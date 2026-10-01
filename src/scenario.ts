@@ -117,9 +117,9 @@ export function loadScenario(scenarioDir: string): Scenario {
   // task carries one; materialize() strips the flag from the installed copy.
   const skillDir = path.resolve(scenarioDir, "../..");
   if (isHiddenSkill(fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"))) {
-    if (criteria.skill_use === "forbidden")
+    if (criteria.skill_use === "forbidden" || criteria.install !== undefined)
       throw new Error(
-        `a hidden skill is always invoked, so it cannot be forbidden: ${scenarioDir}`,
+        `a hidden skill is always invoked, so it has no routing to test: ${scenarioDir}`,
       );
     prompt = `Use the ${skill} skill for this task.\n\n${prompt}`;
   }
@@ -138,8 +138,10 @@ export function loadScenario(scenarioDir: string): Scenario {
   };
 }
 
-// A hidden skill only loads on an explicit invocation in production, and the
-// agent SDK cannot honor the flag, so it is never offered as an alternative.
+// Alternatives are real directories with a real SKILL.md: a symlink could
+// alias the skill under test, whose installed copy would then carry its evals,
+// or pull a file from outside the root. A hidden skill only loads on an
+// explicit invocation in production, so it is never an alternative.
 function resolveInstall(
   skillDir: string,
   install: Criteria["install"],
@@ -147,26 +149,28 @@ function resolveInstall(
 ): string[] {
   if (install === undefined) return [];
   const skillsRoot = path.dirname(skillDir);
-  const realRoot = fs.realpathSync(skillsRoot);
   const self = path.basename(skillDir);
   const invocable = (name: string): boolean => {
-    const md = path.join(skillsRoot, name, "SKILL.md");
+    const dir = path.join(skillsRoot, name);
+    const md = path.join(dir, "SKILL.md");
     return (
-      fs.existsSync(md) &&
-      path.dirname(fs.realpathSync(path.join(skillsRoot, name))) === realRoot &&
+      name !== self &&
+      !name.startsWith(".") &&
+      fs.lstatSync(dir, { throwIfNoEntry: false })?.isDirectory() === true &&
+      fs.lstatSync(md, { throwIfNoEntry: false })?.isFile() === true &&
       !isHiddenSkill(fs.readFileSync(md, "utf8"))
     );
   };
   if (install === "all") {
-    return fs
-      .readdirSync(skillsRoot)
-      .filter((n) => n !== self && !n.startsWith(".") && invocable(n))
-      .sort();
+    const all = fs.readdirSync(skillsRoot).filter(invocable).sort();
+    if (all.length === 0)
+      throw new Error(`install "all" finds no other model-invocable skill for ${scenarioDir}`);
+    return all;
   }
   if (!Array.isArray(install) || install.length === 0)
     throw new Error(`install must be "all" or a non-empty list of skills in ${scenarioDir}`);
   for (const name of install) {
-    if (typeof name !== "string" || name === self || name.includes("/") || !invocable(name))
+    if (typeof name !== "string" || name.includes("/") || !invocable(name))
       throw new Error(
         `install names ${JSON.stringify(name)}, not another model-invocable skill under the root, in ${scenarioDir}`,
       );
@@ -256,6 +260,7 @@ const MARKDOWN_LINK = /\]\(\s*<([^>]+)>|\]\(\s*([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?
 export function linkedSiblings(skillDir: string): string[] {
   const skillsRoot = path.dirname(skillDir);
   const realRoot = fs.realpathSync(skillsRoot);
+  const realSelf = fs.realpathSync(skillDir);
   const self = path.basename(skillDir);
   const found = new Set([self]);
   const pending = [skillDir];
@@ -269,8 +274,10 @@ export function linkedSiblings(skillDir: string): string[] {
         const name = rel.split(path.sep)[0];
         if (name === "" || name === ".." || path.isAbsolute(rel) || found.has(name)) continue;
         if (!fs.existsSync(path.join(skillsRoot, name, "SKILL.md"))) continue;
-        // A symlinked sibling must not pull in a tree from outside the root.
-        if (path.dirname(fs.realpathSync(path.join(skillsRoot, name))) !== realRoot) continue;
+        // A symlinked sibling must not pull in a tree from outside the root,
+        // or be an alias of the skill itself.
+        const real = fs.realpathSync(path.join(skillsRoot, name));
+        if (path.dirname(real) !== realRoot || real === realSelf) continue;
         found.add(name);
         pending.push(path.join(skillsRoot, name));
       }
@@ -353,7 +360,9 @@ export function materialize(
       ];
   for (const root of roots) {
     for (const name of installed) {
-      const from = path.join(skillsRoot, name);
+      // From the real directory, so a symlinked sibling is copied, evals
+      // excluded, rather than linked back to its whole source tree.
+      const from = fs.realpathSync(path.join(skillsRoot, name));
       fs.cpSync(from, path.join(workdir, root, "skills", name), {
         recursive: true,
         filter: (src) => src !== path.join(from, "evals"),
@@ -672,6 +681,12 @@ export function generateRun(
   paths: RunPaths,
 ): { name: string; configPath: string; skill: string; scenario: string } {
   const s = loadScenario(scenarioDir);
+  // Grok reports a load only for a file-tool read of the exact path, so a
+  // missed load would pass a near miss.
+  if (opts.harness === "grok" && s.criteria.skill_use === "forbidden")
+    throw new Error(
+      `grok cannot evidence a skill load reliably enough for skill_use "forbidden": ${scenarioDir}`,
+    );
   const name = runNameFor(scenarioDir, opts.harness, opts.control);
   const runDir = path.join(paths.scratchDir, name);
   fs.rmSync(runDir, { recursive: true, force: true });

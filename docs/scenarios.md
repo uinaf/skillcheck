@@ -74,14 +74,16 @@ separately as a rate across trials.
 A trigger scenario measures routing: whether a natural prompt loads this skill
 when adjacent skills compete for it. `"install"` names other skills under the
 same root to install beside it, or `"all"` installs every model-invocable one,
-as a plugin does. Hidden skills are never offered: production loads them only
-on an explicit invocation, which the eval cannot simulate.
+as a plugin does. Alternatives must be real directories, not symlinks. A hidden
+skill is never an alternative and cannot be the skill under test: production
+loads it only on an explicit invocation, so there is no routing to measure.
 
 - Positive: `"skill_use": "required"` (the default) with the alternatives
   installed. It fails when the agent routes elsewhere or loads nothing.
 - Near miss: `"skill_use": "forbidden"` on a prompt that belongs to a
   neighbor or to no skill. It fails when this skill loads, and the skill-used
-  rate then counts the misfires.
+  rate then counts the misfires. Not on Grok, whose load evidence is too thin
+  to tell an unloaded skill from an unseen read.
 
 Keep the checklist on the outcome the right lane should produce, so a near
 miss that loads nothing but does the work badly still fails. A control run of

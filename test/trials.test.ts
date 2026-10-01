@@ -17,7 +17,12 @@ import {
   summarizeSkills,
   type ScorecardEntry,
 } from "../src/cli.ts";
-import { generateRun, resolvePackageDir, type RunOptions } from "../src/scenario.ts";
+import {
+  generateRun,
+  linkedSiblings,
+  resolvePackageDir,
+  type RunOptions,
+} from "../src/scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cli = path.join(here, "..", "src", "cli.ts");
@@ -1197,6 +1202,10 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
     write("near/evals/s/criteria.json", "{}");
     write("x/SKILL.md", "---\nname: x\ndescription: x\n---\n");
     write("hidden/SKILL.md", "---\nname: hidden\ndisable-model-invocation: true\n---\n");
+    // Aliases of the skill under test would install its evals beside it.
+    fs.symlinkSync(path.join(skills, "demo"), path.join(skills, "alias"));
+    fs.mkdirSync(path.join(skills, "mdlink"));
+    fs.symlinkSync(path.join(skills, "x", "SKILL.md"), path.join(skills, "mdlink", "SKILL.md"));
     const paths = {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
@@ -1229,6 +1238,18 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
 
     const listed = run({ install: ["near"], skill_use: "forbidden" });
     assert.deepEqual(listed.installed, ["demo", "near", "x"], "an alternative brings its links");
+    assert.equal(
+      fs.existsSync(
+        path.join(
+          listed.config.providers[0].config.working_dir,
+          ".claude",
+          "skills",
+          "near",
+          "evals",
+        ),
+      ),
+      false,
+    );
     assert.deepEqual(listed.config.providers[0].config.skills, ["demo", "near"]);
     assert.deepEqual(listed.config.tests[0].assert[1].config, {
       skill: "demo",
@@ -1245,7 +1266,18 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
         .assert[1].config.forbidden,
       undefined,
     );
-    for (const bad of [["hidden"], ["demo"], ["missing"], ["../near"], []]) {
+    const codex = run({ install: ["near"] }, { harness: "codex" }).config.providers[0].config;
+    for (const root of [".claude", ".agents"])
+      assert.deepEqual(fs.readdirSync(path.join(codex.working_dir, root, "skills")).sort(), [
+        "demo",
+        "near",
+        "x",
+      ]);
+    assert.throws(
+      () => run({ install: ["near"], skill_use: "forbidden" }, { harness: "grok" }),
+      /grok cannot evidence/,
+    );
+    for (const bad of [["hidden"], ["demo"], ["alias"], ["mdlink"], ["missing"], ["../near"], []]) {
       assert.throws(() => run({ install: bad }), /install/, JSON.stringify(bad));
     }
 
@@ -1271,7 +1303,7 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
   }
 });
 
-test("install: a hidden skill cannot be forbidden", () => {
+test("install: a hidden skill under test has no routing to test", () => {
   const dir = tmp("hidden-forbidden");
   try {
     const skillDir = path.join(dir, "skills", "demo");
@@ -1285,21 +1317,36 @@ test("install: a hidden skill cannot be forbidden", () => {
     );
     const criteriaPath = path.join(skillDir, "evals", "basic", "criteria.json");
     const criteria = JSON.parse(fs.readFileSync(criteriaPath, "utf8"));
-    fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, skill_use: "forbidden" }));
-    assert.throws(
-      () =>
-        generateRun(
-          path.join(skillDir, "evals", "basic"),
-          { harness: "claude", judgeModel: "claude-opus-5" },
-          {
-            scratchDir: path.join(dir, "scratch"),
-            transformPath: path.join(here, "..", "src", "transform.ts"),
-            grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
-            skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
-          },
-        ),
-      /cannot be forbidden/,
-    );
+    for (const extra of [{ skill_use: "forbidden" }, { install: "all" }]) {
+      fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, ...extra }));
+      assert.throws(
+        () =>
+          generateRun(
+            path.join(skillDir, "evals", "basic"),
+            { harness: "claude", judgeModel: "claude-opus-5" },
+            {
+              scratchDir: path.join(dir, "scratch"),
+              transformPath: path.join(here, "..", "src", "transform.ts"),
+              grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+              skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
+            },
+          ),
+        /no routing to test/,
+      );
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("linkedSiblings: a link to an alias of the skill itself is not a sibling", () => {
+  const dir = tmp("self-alias");
+  try {
+    const skills = path.join(dir, "skills");
+    fs.mkdirSync(path.join(skills, "demo"), { recursive: true });
+    fs.writeFileSync(path.join(skills, "demo", "SKILL.md"), "See [me](../alias/SKILL.md).\n");
+    fs.symlinkSync(path.join(skills, "demo"), path.join(skills, "alias"));
+    assert.deepEqual(linkedSiblings(path.join(skills, "demo")), []);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
