@@ -6,7 +6,7 @@
 # root; every agent runs as the unprivileged agent user (agent-wrapper.sh),
 # which cannot enter /srv or read a run's config, manifests, or promptfoo state.
 # Build with this directory as context; usage: docs/usage.md#isolated-runs.
-FROM node:24.21.0-bookworm-slim
+FROM node:24.21.0-bookworm-slim@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
 
 ARG SKILLCHECK_VERSION
 
