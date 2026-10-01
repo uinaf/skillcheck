@@ -281,7 +281,10 @@ becomes `mixed` and per-entry shas remain. A result with no sidecar reduces as
 ## State
 
 `<root>/.skillcheck/` holds `results/`, disposable and safe to gitignore, and
-`scorecards/`, which is meant to be committed. Scratch workdirs live under the
+`scorecards/`, the history to keep. In the isolated image it is a separate
+writable mount, so it can live outside the repository under test: a separate
+evals repository can pin the skill repository to a commit, keep its scorecards,
+and leave the skill repository with only scenarios and `skillcheck lint`. Scratch workdirs live under the
 system temp dir, outside the root. Nothing is ever written inside the installed
 package.
 

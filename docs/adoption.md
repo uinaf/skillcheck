@@ -63,7 +63,9 @@ skillcheck sweep            # resumes: only scenarios without results
 skillcheck summarize        # writes .skillcheck/scorecards/<UTC-date>.json
 ```
 
-Commit `.skillcheck/scorecards/`. Gitignore the rest:
+Keep `.skillcheck/scorecards/` as the history, either committed here or in a
+separate evals repository that mounts it as the state directory
+([isolated runs](usage.md#isolated-runs)). Gitignore the rest:
 
 ```gitignore
 .skillcheck/results/
