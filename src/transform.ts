@@ -30,6 +30,18 @@ function capped(rel: string, text: string): string {
   return `=== OUTPUT FILE: ${rel} (truncated: showing ${PER_FILE_CAP} of ${text.length} chars) ===\n${safeSlice(text, PER_FILE_CAP)}\n=== END OUTPUT FILE ===`;
 }
 
+// Agent config roots, installed dependencies, and tool caches are not
+// deliverables. A cache can be hundreds of KB and fill the total cap before the
+// judge sees a real file. materialize() skips the same dirs in the manifest.
+export const SKIPPED_DIRS = new Set([
+  ".claude",
+  ".grok",
+  "node_modules",
+  ".cache",
+  ".npm",
+  ".pnpm-store",
+]);
+
 export default function transform(output: string, context: TransformContext): string {
   const workdir = context.vars.workdir;
   const manifest: Record<string, string> = JSON.parse(
@@ -41,7 +53,7 @@ export default function transform(output: string, context: TransformContext): st
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (e.name !== ".claude" && e.name !== ".grok" && e.name !== "node_modules") walk(p);
+        if (!SKIPPED_DIRS.has(e.name)) walk(p);
       } else if (e.isFile()) {
         const rel = path.relative(workdir, p);
         visited.add(rel);

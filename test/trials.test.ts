@@ -1017,3 +1017,79 @@ test("summarize: a retired row counts once, and a stray JSON file still warns", 
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("materialize: linked sibling skills are installed transitively, without evals", () => {
+  const dir = tmp("siblings");
+  try {
+    const skills = path.join(dir, "skills");
+    const write = (rel: string, text: string) => {
+      fs.mkdirSync(path.dirname(path.join(skills, rel)), { recursive: true });
+      fs.writeFileSync(path.join(skills, rel), text);
+    };
+    fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), path.join(skills, "demo"), {
+      recursive: true,
+    });
+    fs.appendFileSync(
+      path.join(skills, "demo", "SKILL.md"),
+      "\nHand off to [b](../b/SKILL.md#when).\n",
+    );
+    write("b/SKILL.md", "---\nname: b\ndescription: b\n---\nStyle: [c](references/x.md).\n");
+    write("b/references/x.md", "See [c](../../c/SKILL.md) and [web](https://example.com).\n");
+    write("b/evals/s/criteria.json", "{}");
+    write("c/SKILL.md", "---\nname: c\ndescription: c\n---\nBack to [demo](../demo/SKILL.md).\n");
+    write("unlinked/SKILL.md", "---\nname: unlinked\ndescription: u\n---\n");
+    const paths = {
+      scratchDir: path.join(dir, "scratch"),
+      transformPath: path.join(here, "..", "src", "transform.ts"),
+      grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
+      skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
+    };
+    const scenarioDir = path.join(skills, "demo", "evals", "basic");
+    const base = { harness: "codex" as const, judgeModel: "claude-opus-5" };
+    const wd = (control: boolean) =>
+      JSON.parse(
+        fs.readFileSync(generateRun(scenarioDir, { ...base, control }, paths).configPath, "utf8"),
+      ).providers[0].config.working_dir;
+    const workdir = wd(false);
+    for (const root of [".claude", ".agents"]) {
+      assert.deepEqual(fs.readdirSync(path.join(workdir, root, "skills")).sort(), [
+        "b",
+        "c",
+        "demo",
+      ]);
+      assert.equal(fs.existsSync(path.join(workdir, root, "skills", "b", "evals")), false);
+      assert.ok(fs.existsSync(path.join(workdir, root, "skills", "b", "references", "x.md")));
+    }
+    assert.equal(fs.existsSync(path.join(wd(true), ".agents")), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("codex: the run's HOME hides the operator's user-level skills and keeps the rest", () => {
+  const dir = tmp("home");
+  const saved = process.env.HOME;
+  try {
+    const operator = path.join(dir, "operator");
+    fs.mkdirSync(path.join(operator, ".agents", "skills", "demo"), { recursive: true });
+    fs.writeFileSync(
+      path.join(operator, ".agents", "skills", "demo", "SKILL.md"),
+      "installed copy\n",
+    );
+    fs.mkdirSync(path.join(operator, ".codex"));
+    fs.mkdirSync(path.join(operator, ".config", "gateway"), { recursive: true });
+    fs.writeFileSync(path.join(operator, ".config", "gateway", "auth.json"), "{}");
+    process.env.HOME = operator;
+    const config = JSON.parse(
+      fs.readFileSync(generate(dir, { harness: "codex", control: true }).configPath, "utf8"),
+    );
+    const home = config.providers[0].config.cli_env.HOME;
+    assert.deepEqual(fs.readdirSync(home), [".config"]);
+    assert.ok(fs.existsSync(path.join(home, ".config", "gateway", "auth.json")));
+    assert.equal(fs.existsSync(path.join(home, ".agents")), false);
+  } finally {
+    if (saved === undefined) delete process.env.HOME;
+    else process.env.HOME = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
