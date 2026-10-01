@@ -57,6 +57,45 @@ and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
 Claude; passing it with `codex` or `grok` fails before the eval starts. On
 those harnesses, omitting `--agent` leaves the model to that CLI's own default.
 
+### Isolated runs
+
+Run evals inside the image in [container/](../container/Dockerfile), which
+follows promptfoo's guidance for
+[coding agents](https://www.promptfoo.dev/docs/guides/evaluate-coding-agents/):
+a workspace is not a sandbox, so agents run in an ephemeral container with a
+read-only mount of the repository, writes on a separate volume, a
+project-local Codex home, and only the credentials they need. On the host the
+agent shares the operator's machine: it can read installed skills, enabled
+plugins, global guidance, and any file by absolute path. `run` and `sweep` warn
+when they are not isolated.
+
+```sh
+docker build -t skillcheck:<version> --build-arg SKILLCHECK_VERSION=<version> container
+docker run --rm --env-file <owner-only env file> \
+  -v "$PWD:/srv/work:ro" -v "$PWD/.skillcheck:/srv/work/.skillcheck" \
+  -v <codex config.toml>:/etc/skillcheck/codex/config.toml:ro \
+  skillcheck:<version> run --root /srv/work skills/<skill>/evals/<scenario> --trials 3
+```
+
+skillcheck runs as root and reads the repository from `/srv`, which only root
+can enter. Each agent binary starts through a wrapper that drops to the
+unprivileged `agent` user, which owns only its workdir and the run's homes; the
+run's promptfoo config and manifests, which carry the criteria, and promptfoo's
+own state stay root-only. Start one container per `run` or `sweep`
+invocation, as above: agents in one container share the agent user, so a
+control must never share a container with a skill run. The image's home is
+empty. Pass Claude gateway auth
+through the env file ([auth](#auth)) and mount a Codex `config.toml` written for
+the run that names only the model provider and its auth, never the operator's
+own; a token its auth command reads must be readable by the agent user. Codex's
+namespace sandbox cannot start inside a container, so skillcheck runs it with
+full access there; the container and the user drop are the boundary. A run
+counts as isolated only inside a container, with the image's marker variable,
+skillcheck running as root, an agent user configured, and the wrapper
+installed; results record `isolated` in their run
+configuration, so `summarize` refuses to mix isolated and host rows and `sweep`
+reruns host results.
+
 ### Trials
 
 One trial is one sample of a noisy process: the same scenario and skill can
@@ -221,6 +260,7 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
   "judge_effort": null,
   "trials": 3,
   "agent_access": "online",
+  "isolated": true,
   "aggregate": { "pass": false, "pass_rate": 0.6667, "score": 0.81, "...": "..." },
   "ran_at": "<ISO timestamp>",
   "tool_version": "<skillcheck version>"
@@ -228,8 +268,8 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
 ```
 
 `summarize` reads those sidecars and refuses to mix skills-tree revisions or
-run configurations (agent model and effort, judge model and effort, trials, and
-agent access) in
+run configurations (agent model and effort, judge model and effort, trials,
+agent access, and isolation) in
 one scorecard, including retained rows from partial reruns, unless
 `--allow-mixed`. Configurations are compared within a harness, since harnesses
 differ by design. Sidecars written before run configurations were recorded fall

@@ -11,6 +11,7 @@ import {
   formatStats,
   parseArgs,
   reduceResults,
+  runConfigOf,
   runOptions,
   stateDirs,
   summarizeSkills,
@@ -208,6 +209,7 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
       judge_model: "claude-opus-5",
       judge_effort: null,
       agent_access: "offline",
+      isolated: false,
       latency_ms: 1000,
       tokens: 450,
     });
@@ -229,6 +231,7 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
     judge_model: "j",
     judge_effort: null,
     agent_access: "online",
+    isolated: false,
     latency_ms: 0,
     tokens: 0,
     ...over,
@@ -452,6 +455,7 @@ function writeGraded(
       judge_model: "claude-opus-5",
       judge_effort: null,
       agent_access: "online",
+      isolated: false,
       ...config,
     }),
   );
@@ -529,7 +533,7 @@ syncBuiltinESMExports();
     fs.writeFileSync(metaFile, JSON.stringify(offline));
     const stale = sweep();
     assert.equal(stale.status, 0, stale.stderr);
-    assert.match(stale.stdout, /RERUN demo--basic \(results used .*, offline\)/);
+    assert.match(stale.stdout, /RERUN demo--basic \(results used .*, offline, host\)/);
 
     const changed = sweep("--agent-effort", "medium");
     assert.equal(changed.status, 0, changed.stderr);
@@ -1108,6 +1112,39 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
   } finally {
     if (saved === undefined) delete process.env.HOME;
     else process.env.HOME = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("isolated image: the env marker alone on a host claims nothing", () => {
+  const dir = tmp("isolated");
+  const saved = process.env.SKILLCHECK_ISOLATED;
+  try {
+    const provider = () =>
+      JSON.parse(fs.readFileSync(generate(dir, { harness: "codex" }).configPath, "utf8"))
+        .providers[0].config;
+    delete process.env.SKILLCHECK_ISOLATED;
+    assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, false);
+    assert.equal(provider().sandbox_mode, "workspace-write");
+    process.env.SKILLCHECK_ISOLATED = "1";
+    const container = fs.existsSync("/.dockerenv") || fs.existsSync("/run/.containerenv");
+    assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, container);
+    assert.equal(provider().sandbox_mode, container ? "danger-full-access" : "workspace-write");
+  } finally {
+    if (saved === undefined) delete process.env.SKILLCHECK_ISOLATED;
+    else process.env.SKILLCHECK_ISOLATED = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("generateRun: the config and manifests that carry criteria are owner-only", () => {
+  const dir = tmp("modes");
+  try {
+    const { configPath } = generate(dir, { trials: 2 });
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    assert.equal(fs.statSync(configPath).mode & 0o777, 0o600);
+    for (const t of config.tests) assert.equal(fs.statSync(t.vars.manifest).mode & 0o777, 0o600);
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

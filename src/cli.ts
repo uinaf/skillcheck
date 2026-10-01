@@ -11,6 +11,7 @@ import {
   DEFAULT_CLAUDE_AGENT,
   encodeRunNamePart,
   generateRun,
+  isIsolated,
   requiredEvalPackages,
   resolvePackageDir,
   runNameFor,
@@ -158,6 +159,9 @@ export interface RunConfig {
   // Results before the agent went online had file tools only; they are not
   // comparable with online runs.
   agent_access: "online" | "offline";
+  // Ran inside the isolated image (container/Dockerfile). A host run can read
+  // the operator's installed skills, plugins, and guidance.
+  isolated: boolean;
 }
 
 export function runConfigOf(opts: RunOptions): RunConfig {
@@ -170,6 +174,7 @@ export function runConfigOf(opts: RunOptions): RunConfig {
     judge_effort: opts.judgeEffort ?? null,
     trials: opts.trials ?? 1,
     agent_access: "online",
+    isolated: isIsolated(),
   };
 }
 
@@ -183,12 +188,13 @@ function configKey(c: Partial<RunConfig>): string {
     c.judge_effort ?? null,
     c.trials ?? 1,
     c.agent_access ?? "offline",
+    c.isolated ?? false,
   ]);
 }
 
 function describeConfig(c: Partial<RunConfig>): string {
   const effort = (e: string | null | undefined) => (e ? `@${e}` : "");
-  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}`;
+  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}, ${c.isolated ? "isolated" : "host"}`;
 }
 
 // Throws when rows of one harness were measured with different configurations.
@@ -552,6 +558,7 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
       judge_effort: m.judge_effort ?? null,
       trials: m.trials ?? 1,
       agent_access: m.agent_access === "online" ? "online" : "offline",
+      isolated: m.isolated === true,
     };
   }
   const r = raw as {
@@ -573,6 +580,7 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
     judge_effort: typeof judgeEffort === "string" ? judgeEffort : null,
     trials: r?.results?.results?.length ?? 1,
     agent_access: "offline",
+    isolated: false,
   };
 }
 
@@ -638,11 +646,21 @@ function discoverScenarios(root: string): string[] {
 const RUN_FLAGS =
   "[--root DIR] [--harness claude|codex|grok] [--agent MODEL] [--agent-effort EFFORT] [--judge MODEL] [--judge-effort EFFORT] [--trials K] [--max-turns N] [--control]";
 
+// Outside the isolated image the agent shares the operator's machine: it can
+// read installed skills, plugins, guidance, and any file by absolute path.
+function warnHostRun(): void {
+  if (isIsolated()) return;
+  console.error(
+    "warning: host run; the agent can read this machine's installed skills, plugins, and files, so scores are not isolated. Run in the isolated image: docs/usage.md#isolated-runs",
+  );
+}
+
 function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length !== 1) fail(`usage: skillcheck run <scenario-dir> ${RUN_FLAGS}`);
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
+  warnHostRun();
   const o = runScenario(positional[0], opts, resolveRoot(flags));
   if (o.stats === undefined) {
     console.error(`ERROR ${o.name}: ${o.error ?? "no usable result"} (promptfoo rc=${o.rc})`);
@@ -660,6 +678,7 @@ function cmdSweep(argv: string[]): void {
   const root = resolveRoot(flags);
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
+  warnHostRun();
   const all = flags.get("--all") === true;
   const resultsDir = stateDirs(root).results;
   const wanted = configKey(runConfigOf(opts));
