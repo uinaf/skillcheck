@@ -69,6 +69,24 @@ and the result still records whether the skill was loaded. Omitted, it is
 reported score is the assert-set's weighted score; skill-used is reported
 separately as a rate across trials.
 
+## Trigger scenarios
+
+A trigger scenario measures routing: whether a natural prompt loads this skill
+when adjacent skills compete for it. `"install"` names other skills under the
+same root to install beside it, or `"all"` installs every model-invocable one,
+as a plugin does. Hidden skills are never offered: production loads them only
+on an explicit invocation, which the eval cannot simulate.
+
+- Positive: `"skill_use": "required"` (the default) with the alternatives
+  installed. It fails when the agent routes elsewhere or loads nothing.
+- Near miss: `"skill_use": "forbidden"` on a prompt that belongs to a
+  neighbor or to no skill. It fails when this skill loads, and the skill-used
+  rate then counts the misfires.
+
+Keep the checklist on the outcome the right lane should produce, so a near
+miss that loads nothing but does the work badly still fails. A control run of
+either installs nothing and requires nothing.
+
 Write descriptions a judge can check against the deliverable: an observable
 property, not a feeling. Weight the items that would make a reviewer reject the
 work.

@@ -19,8 +19,12 @@ export interface ChecklistItem {
 export interface Criteria {
   type: string;
   context?: string;
-  // "optional" for out-of-lane scenarios where declining the skill is correct.
-  skill_use?: "required" | "optional";
+  // "optional" for out-of-lane scenarios where declining the skill is correct;
+  // "forbidden" for near-miss prompts that must not load it.
+  skill_use?: "required" | "optional" | "forbidden";
+  // Other skills under the root installed beside it, so the agent has to
+  // route between them; "all" installs every model-invocable skill.
+  install?: string[] | "all";
   checklist: ChecklistItem[];
 }
 
@@ -29,6 +33,7 @@ export interface Scenario {
   scenario: string;
   name: string; // "<skill>--<scenario>"
   skillDir: string;
+  alternatives: string[]; // criteria.install, resolved
   prompt: string;
   task: string; // the prompt without the hidden-skill invocation
   files: { name: string; content: string }[];
@@ -86,10 +91,9 @@ export function loadScenario(scenarioDir: string): Scenario {
   }
   if (
     criteria.skill_use !== undefined &&
-    criteria.skill_use !== "required" &&
-    criteria.skill_use !== "optional"
+    !["required", "optional", "forbidden"].includes(criteria.skill_use)
   ) {
-    throw new Error(`skill_use must be "required" or "optional" in ${scenarioDir}`);
+    throw new Error(`skill_use must be "required", "optional", or "forbidden" in ${scenarioDir}`);
   }
   for (const item of criteria.checklist) {
     const ok =
@@ -113,19 +117,61 @@ export function loadScenario(scenarioDir: string): Scenario {
   // task carries one; materialize() strips the flag from the installed copy.
   const skillDir = path.resolve(scenarioDir, "../..");
   if (isHiddenSkill(fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"))) {
+    if (criteria.skill_use === "forbidden")
+      throw new Error(
+        `a hidden skill is always invoked, so it cannot be forbidden: ${scenarioDir}`,
+      );
     prompt = `Use the ${skill} skill for this task.\n\n${prompt}`;
   }
+  const alternatives = resolveInstall(skillDir, criteria.install, scenarioDir);
 
   return {
     skill,
     scenario,
     name: `${skill}--${scenario}`,
     skillDir,
+    alternatives,
     prompt,
     task,
     files,
     criteria,
   };
+}
+
+// A hidden skill only loads on an explicit invocation in production, and the
+// agent SDK cannot honor the flag, so it is never offered as an alternative.
+function resolveInstall(
+  skillDir: string,
+  install: Criteria["install"],
+  scenarioDir: string,
+): string[] {
+  if (install === undefined) return [];
+  const skillsRoot = path.dirname(skillDir);
+  const realRoot = fs.realpathSync(skillsRoot);
+  const self = path.basename(skillDir);
+  const invocable = (name: string): boolean => {
+    const md = path.join(skillsRoot, name, "SKILL.md");
+    return (
+      fs.existsSync(md) &&
+      path.dirname(fs.realpathSync(path.join(skillsRoot, name))) === realRoot &&
+      !isHiddenSkill(fs.readFileSync(md, "utf8"))
+    );
+  };
+  if (install === "all") {
+    return fs
+      .readdirSync(skillsRoot)
+      .filter((n) => n !== self && !n.startsWith(".") && invocable(n))
+      .sort();
+  }
+  if (!Array.isArray(install) || install.length === 0)
+    throw new Error(`install must be "all" or a non-empty list of skills in ${scenarioDir}`);
+  for (const name of install) {
+    if (typeof name !== "string" || name === self || name.includes("/") || !invocable(name))
+      throw new Error(
+        `install names ${JSON.stringify(name)}, not another model-invocable skill under the root, in ${scenarioDir}`,
+      );
+  }
+  return [...new Set(install)].sort();
 }
 
 // Canonical run/result name for a scenario + harness. Single source of truth:
@@ -293,9 +339,18 @@ export function materialize(
         ? [".grok"]
         : [".claude"];
   // Sibling skills it links to come along so those links resolve, as they do
-  // when the plugin installs the set together.
+  // when the plugin installs the set together; so do the scenario's
+  // alternatives and their own links.
   const skillsRoot = path.dirname(s.skillDir);
-  const installed = control ? [] : [s.skill, ...linkedSiblings(s.skillDir)];
+  const installed = control
+    ? []
+    : [
+        ...new Set([
+          s.skill,
+          ...linkedSiblings(s.skillDir),
+          ...s.alternatives.flatMap((a) => [a, ...linkedSiblings(path.join(skillsRoot, a))]),
+        ]),
+      ];
   for (const root of roots) {
     for (const name of installed) {
       const from = path.join(skillsRoot, name);
@@ -340,7 +395,13 @@ export function materialize(
   return { workdir, manifestPath };
 }
 
-function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: RunPaths): object {
+function agentProvider(
+  opts: RunOptions,
+  workdir: string,
+  skills: string[],
+  paths: RunPaths,
+): object {
+  const [skill] = skills;
   if (opts.harness === "grok") {
     return {
       id: `file://${paths.grokProviderPath}`,
@@ -386,7 +447,7 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
       working_dir: workdir,
       setting_sources: ["project"],
       // A control run offers no skill, so the Skill tool and its catalog stay off.
-      ...(opts.control ? {} : { skills: [skill] }),
+      ...(opts.control ? {} : { skills }),
       permission_mode: "acceptEdits",
       // Online like a real session: shell and web, not just file tools.
       append_allowed_tools: [
@@ -422,7 +483,7 @@ export function buildConfig(
     description: `${s.skill}/${s.scenario}`,
     prompts: ["{{task}}"],
     providers: trials.map((t, i) => ({
-      ...agentProvider(opts, t.workdir, s.skill, paths),
+      ...agentProvider(opts, t.workdir, [s.skill, ...s.alternatives], paths),
       label: trialLabel(i),
     })),
     defaultTest: {
@@ -498,7 +559,8 @@ export function buildConfig(
           metric: "skill-used",
           config: {
             skill: s.skill,
-            required: !opts.control && s.criteria.skill_use !== "optional",
+            required: !opts.control && (s.criteria.skill_use ?? "required") === "required",
+            ...(!opts.control && s.criteria.skill_use === "forbidden" ? { forbidden: true } : {}),
           },
         },
       ],

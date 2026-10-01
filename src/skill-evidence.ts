@@ -15,7 +15,7 @@ interface Call {
 
 interface EvidenceContext {
   vars: { workdir?: unknown };
-  config?: { skill?: unknown; required?: unknown };
+  config?: { skill?: unknown; required?: unknown; forbidden?: unknown };
   metadata?: Metadata | null;
   providerResponse?: { metadata?: Metadata | null } | null;
 }
@@ -91,19 +91,22 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
 }
 
 // Optional scenarios (out-of-lane cases where declining the skill is right)
-// always pass; the score still records whether the skill was loaded.
+// always pass, and forbidden ones (near-miss prompts) pass only when the skill
+// stayed unloaded; the score always records whether it was loaded.
 export default function assertSkillUsed(
   _output: string,
   context: EvidenceContext,
 ): { pass: boolean; score: number; reason: string } {
   const evidence = skillEvidence(context);
-  const required = context.config?.required !== false;
+  const forbidden = context.config?.forbidden === true;
+  const required = !forbidden && context.config?.required !== false;
   const used = evidence !== undefined;
+  const skill = String(context.config?.skill);
   return {
-    pass: used || !required,
+    pass: forbidden ? !used : used || !required,
     score: used ? 1 : 0,
     reason: used
-      ? `skill used: ${evidence}`
-      : `skill ${String(context.config?.skill)} not loaded${required ? "" : " (optional for this scenario)"}`,
+      ? `skill used: ${evidence}${forbidden ? " (forbidden for this scenario)" : ""}`
+      : `skill ${skill} not loaded${required || forbidden ? "" : " (optional for this scenario)"}`,
   };
 }
