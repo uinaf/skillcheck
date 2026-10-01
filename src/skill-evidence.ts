@@ -17,7 +17,7 @@ interface EvidenceContext {
   vars: { workdir?: unknown };
   config?: { skill?: unknown; required?: unknown; forbidden?: unknown };
   metadata?: Metadata | null;
-  providerResponse?: { metadata?: Metadata | null } | null;
+  providerResponse?: { metadata?: Metadata | null; raw?: unknown } | null;
 }
 
 interface Metadata {
@@ -87,7 +87,33 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
       opening.some((t) => (c.output as string).includes(t)),
   );
   if (shown) return `shell read of the installed ${skill}/SKILL.md`;
+
+  // Codex reports a read only when the whole command exits zero, so `cat
+  // SKILL.md; rg ...` with an rg that finds nothing hides a read that did put
+  // the skill in context. Its raw items keep every command's output.
+  const printed = codexCommandOutputs(context.providerResponse?.raw).some((out) =>
+    opening.some((t) => out.includes(t)),
+  );
+  if (printed) return `shell read of the installed ${skill}/SKILL.md`;
   return undefined;
+}
+
+function codexCommandOutputs(raw: unknown): string[] {
+  let parsed: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  const items = (parsed as { items?: unknown } | null)?.items;
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((item: { type?: unknown; aggregated_output?: unknown } | null) =>
+    item?.type === "command_execution" && typeof item.aggregated_output === "string"
+      ? [item.aggregated_output]
+      : [],
+  );
 }
 
 // Optional scenarios (out-of-lane cases where declining the skill is right)

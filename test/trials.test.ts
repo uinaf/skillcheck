@@ -1351,3 +1351,40 @@ test("linkedSiblings: a link to an alias of the skill itself is not a sibling", 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("skill evidence: a Codex command that printed SKILL.md counts even when it exits nonzero", async () => {
+  const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
+  const dir = tmp("codex-evidence");
+  try {
+    const workdir = path.join(dir, "workdir");
+    const md =
+      "---\nname: demo\ndescription: Prepare an independent review contract.\n---\nbody text";
+    fs.mkdirSync(path.join(workdir, ".agents", "skills", "demo"), { recursive: true });
+    fs.writeFileSync(path.join(workdir, ".agents", "skills", "demo", "SKILL.md"), md);
+    const check = (output: string, raw?: unknown) =>
+      assertSkillUsed("", {
+        vars: { workdir },
+        config: { skill: "demo", required: true },
+        providerResponse: {
+          raw:
+            raw ??
+            JSON.stringify({
+              items: [
+                {
+                  type: "command_execution",
+                  command: "cat .agents/skills/demo/SKILL.md; rg --files -g none",
+                  status: "failed",
+                  exit_code: 1,
+                  aggregated_output: output,
+                },
+              ],
+            }),
+        },
+      });
+    assert.equal(check(`${md}\n`).pass, true);
+    assert.equal(check("cat: .agents/skills/demo/SKILL.md: No such file").pass, false);
+    assert.equal(check(md, "not json").pass, false, "unparseable raw is no evidence");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
