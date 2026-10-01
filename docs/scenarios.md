@@ -119,7 +119,8 @@ the same way, so links such as `../other/SKILL.md` resolve as they do when a
 plugin installs the set; a control run installs none of them.
 
 A Codex run gets a private `CODEX_HOME` holding only the operator's
-`config.toml` and `auth.json`, and a private `HOME` that links every entry of
+`config.toml` and `auth.json`, with plugins turned off (`features.plugins =
+false`) so a plugin the config enables cannot supply skills, and a private `HOME` that links every entry of
 the operator's home except `.agents`, `.claude`, and `.codex`. Auth helpers that read
 `$HOME` keep working; the operator's user-level skills and global guidance are
 not visible.

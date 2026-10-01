@@ -1100,6 +1100,7 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
     const config = JSON.parse(
       fs.readFileSync(generate(dir, { harness: "codex", control: true }).configPath, "utf8"),
     );
+    assert.deepEqual(config.providers[0].config.cli_config, { features: { plugins: false } });
     const home = config.providers[0].config.cli_env.HOME;
     assert.deepEqual(fs.readdirSync(home), [".config"]);
     assert.ok(fs.existsSync(path.join(home, ".config", "gateway", "auth.json")));
