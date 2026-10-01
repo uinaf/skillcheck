@@ -345,6 +345,9 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
         sandbox_mode: "workspace-write",
         network_access_enabled: true,
         web_search_enabled: true,
+        // The copied config.toml may enable plugins, and Codex installs them
+        // into CODEX_HOME at startup; one could ship the skill under test.
+        cli_config: { features: { plugins: false } },
         cli_env: {
           CODEX_HOME: path.join(workdir, "..", "..", "codex-home"),
           HOME: path.join(workdir, "..", "..", "home"),
