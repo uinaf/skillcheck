@@ -383,7 +383,7 @@ export interface TrialStats {
   score: number; // mean weighted checklist score
   score_min: number;
   score_spread: number; // max - min
-  skill_used: number; // trials whose skill-used assertion passed
+  skill_used: number; // trials that loaded the skill
   skill_used_rate: number;
   noisy: boolean;
 }
