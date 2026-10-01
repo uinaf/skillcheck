@@ -73,20 +73,18 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   if (read) return `read of the installed ${skill}/SKILL.md`;
 
   // Agents also print the file from a shell (`cd .claude/skills/x && cat
-  // SKILL.md`), which a path check cannot follow. Count a successful shell call
-  // that names SKILL.md and whose output carries this skill's frontmatter name.
-  const nameLine = new RegExp(
-    `^name:\\s*["']?${skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?\\s*$`,
-    "m",
-  );
+  // SKILL.md`, or a loop over every file), which a path check cannot follow.
+  // Count a successful shell call whose output carries the installed file's
+  // opening text: then the same instructions reached the agent's context.
+  const opening = [...installed]
+    .map((p) => fs.readFileSync(p, "utf8").slice(0, 300).trim())
+    .filter((t) => t.length >= 40);
   const shown = calls(metadata?.toolCalls).find(
     (c) =>
       c.name === "Bash" &&
       c.is_error === false &&
-      typeof c.input?.command === "string" &&
-      c.input.command.includes("SKILL.md") &&
       typeof c.output === "string" &&
-      nameLine.test(c.output),
+      opening.some((t) => (c.output as string).includes(t)),
   );
   if (shown) return `shell read of the installed ${skill}/SKILL.md`;
   return undefined;

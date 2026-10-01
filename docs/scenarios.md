@@ -58,7 +58,7 @@ that aggregate, so a run that produces good output without ever loading the
 skill still fails. The skill counts as loaded when the harness reports a skill
 call for it, or when the agent completed a read of the installed
 `<config-root>/skills/<skill>/SKILL.md` in its workdir, or a successful shell
-command that names `SKILL.md` and printed this skill's frontmatter `name`.
+command whose output carries the installed file's opening text.
 Claude Code often reads the file directly instead of calling its Skill tool,
 sometimes from a shell, and either way the same instructions reach its context.
 
