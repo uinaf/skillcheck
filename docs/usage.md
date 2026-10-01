@@ -57,6 +57,32 @@ and a Claude agent limit of 50 turns. `--max-turns` changes that limit only for
 Claude; passing it with `codex` or `grok` fails before the eval starts. On
 those harnesses, omitting `--agent` leaves the model to that CLI's own default.
 
+### Isolated runs
+
+Run evals inside the image in [container/](../container/Dockerfile). On the
+host, the agent shares the operator's machine: it can read installed skills,
+enabled plugins, global guidance, and any file by absolute path, so a control
+can load the skill it withholds and a skill run can load another copy. The
+per-run homes described in [the workdir](scenarios.md#the-workdir) only hide
+known locations. `run` and `sweep` warn when they are not isolated.
+
+```sh
+docker build -t skillcheck:<version> --build-arg SKILLCHECK_VERSION=<version> container
+docker run --rm --env-file <owner-only env file> \
+  -v "$PWD:/work" \
+  -v <minimal codex config.toml>:/home/eval/.codex/config.toml:ro \
+  skillcheck:<version> run --root /work skills/<skill>/evals/<scenario> --trials 3
+```
+
+The image holds skillcheck, its eval peers, and common shell tools; its home is
+empty. Mount only the root under test, pass Claude gateway auth through the env
+file ([auth](#auth)), and mount a Codex `config.toml` written for the run that
+names only the model provider and its auth, never the operator's own. Codex's
+namespace sandbox cannot start inside a container, so skillcheck runs it with
+full access there; the container is the boundary. Results record `isolated`
+in their run configuration, so `summarize` refuses to mix isolated and host rows
+and `sweep` reruns host results.
+
 ### Trials
 
 One trial is one sample of a noisy process: the same scenario and skill can
@@ -221,6 +247,7 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
   "judge_effort": null,
   "trials": 3,
   "agent_access": "online",
+  "isolated": true,
   "aggregate": { "pass": false, "pass_rate": 0.6667, "score": 0.81, "...": "..." },
   "ran_at": "<ISO timestamp>",
   "tool_version": "<skillcheck version>"
@@ -228,8 +255,8 @@ Each successful run writes a `<name>.meta.json` sidecar next to its result:
 ```
 
 `summarize` reads those sidecars and refuses to mix skills-tree revisions or
-run configurations (agent model and effort, judge model and effort, trials, and
-agent access) in
+run configurations (agent model and effort, judge model and effort, trials,
+agent access, and isolation) in
 one scorecard, including retained rows from partial reruns, unless
 `--allow-mixed`. Configurations are compared within a harness, since harnesses
 differ by design. Sidecars written before run configurations were recorded fall

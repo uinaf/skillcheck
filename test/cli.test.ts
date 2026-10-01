@@ -301,6 +301,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
     judge_model: "judge-model",
     judge_effort: null,
     agent_access: "offline",
+    isolated: false,
     latency_ms: 1200,
     tokens: 140,
   });
@@ -597,6 +598,7 @@ function entry(skill: string, scenario: string, score: number, sha = "sha1"): Sc
     judge_model: "judge-model",
     judge_effort: null,
     agent_access: "offline",
+    isolated: false,
     latency_ms: 1000,
     tokens: 100,
   };

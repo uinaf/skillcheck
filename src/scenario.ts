@@ -342,7 +342,10 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
         working_dir: workdir,
         skip_git_repo_check: true,
         enable_streaming: true, // required for skill-used evidence
-        sandbox_mode: "workspace-write",
+        // Inside the isolated image the container is the sandbox, and Codex's own
+        // namespace sandbox cannot start there, so every command would fail.
+        sandbox_mode:
+          process.env.SKILLCHECK_ISOLATED === "1" ? "danger-full-access" : "workspace-write",
         network_access_enabled: true,
         web_search_enabled: true,
         // The copied config.toml may enable plugins, and Codex installs them
