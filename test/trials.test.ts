@@ -1148,3 +1148,19 @@ test("generateRun: the config and manifests that carry criteria are owner-only",
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("skill evidence: a shell print of SKILL.md showing this skill's frontmatter", async () => {
+  const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
+  const check = (command: string, output: string, is_error = false) =>
+    assertSkillUsed("", {
+      vars: { workdir: "/tmp/none" },
+      config: { skill: "demo", required: true },
+      metadata: { toolCalls: [{ name: "Bash", input: { command }, is_error, output }] },
+    });
+  const md = "---\nname: demo\ndescription: d\n---\nbody";
+  assert.equal(check("cd .claude/skills/demo && cat SKILL.md", md).pass, true);
+  assert.equal(check("cat SKILL.md", md.replace("name: demo", "name: other")).pass, false);
+  assert.equal(check("cat SKILL.md", md, true).pass, false, "a failed command is no evidence");
+  assert.equal(check("cat notes.md", md).pass, false, "the command must name SKILL.md");
+  assert.equal(check("cat SKILL.md", md.replace("name: demo", "name: demo-two")).pass, false);
+});
