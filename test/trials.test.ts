@@ -1388,3 +1388,38 @@ test("skill evidence: a Codex command that printed SKILL.md counts even when it 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("classifyResult: a failed judge call errors the trial instead of scoring it", () => {
+  const row = (graderError: boolean) => ({
+    score: 0.5,
+    success: false,
+    failureReason: 1,
+    gradingResult: {
+      componentResults: [
+        {
+          score: 0,
+          pass: false,
+          metadata: { assertionSet: { type: "assert-set" } },
+          componentResults: [
+            {
+              score: 0,
+              pass: false,
+              reason: graderError
+                ? "Error calling Claude Agent SDK: Native CLI binary for linux-arm64 not found."
+                : "The plan merges before review.",
+              ...(graderError ? { metadata: { graderError: true } } : {}),
+            },
+          ],
+        },
+        { score: 1, pass: true, assertion: { type: "javascript", metric: "skill-used" } },
+      ],
+    },
+  });
+  assert.deepEqual(classifyResult({ results: { results: [row(true)] } }), {
+    error:
+      "judge call failed: Error calling Claude Agent SDK: Native CLI binary for linux-arm64 not found.",
+  });
+  assert.deepEqual(classifyResult({ results: { results: [row(false)] } }), {
+    trials: [{ score: 0, pass: false, skillUsed: true }],
+  });
+});

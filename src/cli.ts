@@ -282,7 +282,9 @@ interface Component {
   score?: unknown;
   pass?: unknown;
   assertion?: { type?: unknown; metric?: unknown } | null;
-  metadata?: { assertionSet?: { type?: unknown } } | null;
+  metadata?: { assertionSet?: { type?: unknown }; graderError?: unknown } | null;
+  reason?: unknown;
+  componentResults?: unknown;
 }
 
 // promptfoo's ResultFailureReason: NONE, ASSERT, ERROR.
@@ -367,6 +369,16 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
   );
   if (typeof checklist?.score !== "number" || typeof skillUsed?.score !== "number") {
     return { error: "promptfoo result carried no checklist or skill-used verdict" };
+  }
+  // A rubric item whose judge call failed scores 0 with promptfoo's
+  // graderError tag; that is a broken judge, not a verdict on the work.
+  const items = Array.isArray(checklist.componentResults)
+    ? (checklist.componentResults as (Component | null)[])
+    : [];
+  const judgeError = items.find((c) => c?.metadata?.graderError === true);
+  if (judgeError) {
+    const reason = typeof judgeError.reason === "string" ? judgeError.reason.trim() : "";
+    return { error: `judge call failed${reason ? `: ${reason.slice(0, 300)}` : ""}` };
   }
   return { score: checklist.score, pass: res.success, skillUsed: skillUsed.score >= 1 };
 }

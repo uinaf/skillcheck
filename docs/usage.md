@@ -228,7 +228,8 @@ and keeps every row.
 
 Files that are not promptfoo results and ungraded transport errors are skipped
 with a warning rather than failing the reduction. Graded assertion failures
-remain scored results. If a skipped file matches an existing scorecard row,
+remain scored results. A rubric item whose judge call failed (promptfoo tags it
+`graderError`) errors the trial instead, since it judged nothing. If a skipped file matches an existing scorecard row,
 summary generation fails and leaves the scorecard unchanged, so an errored rerun
 cannot carry forward its old score. A graded result for the same identity
 supersedes a skipped attempt only when the result file is newer. This also
