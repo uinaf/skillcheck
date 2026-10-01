@@ -22,6 +22,18 @@ RUN npm install --global \
     "@openai/codex-sdk@^0.156.1" \
   && npm cache clean --force
 
+# npm sometimes skips an SDK's optional platform package. promptfoo's nested
+# copies would still satisfy a looser check, so a build missing the binary the
+# top-level SDKs resolve fails here instead of yielding a judge that errors on
+# every call.
+RUN root="$(npm root --global)" arch="$(node -p process.arch)" \
+  && for pkg in "@anthropic-ai/claude-agent-sdk @anthropic-ai/claude-agent-sdk-linux-$arch" \
+    "@openai/codex-sdk @openai/codex-linux-$arch"; do \
+    set -- $pkg; \
+    test -d "$root/$1/node_modules/$2" || test -d "$root/$2" \
+      || { echo "missing $2 for $1; rebuild with --no-cache" >&2; exit 1; }; \
+  done
+
 # Every agent binary the SDKs can spawn starts through the wrapper.
 COPY agent-wrapper.sh /usr/local/libexec/skillcheck/agent-wrapper.sh
 RUN find "$(npm root --global)" -type f \( -path "*/codex-linux-*/bin/codex" -o -path "*/claude-agent-sdk-linux-*/claude" \) \
