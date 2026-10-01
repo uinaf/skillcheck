@@ -13,7 +13,7 @@
   then exit 2 with the exact install command when one is missing. promptfoo runs from its resolved
   install path. Never use `npx`, which would fetch an unpinned copy from the registry.
 - `dist/transform.js` must sit beside `dist/cli.js`. `cli.ts` hands promptfoo a `file://` URL built as `path.join(here, "transform" + selfExt)`, so the transform is loaded by path, not imported. That is why the transform has an explicit `pack.entry` and `unbundle` is on; the emitted tree stays 1:1 with `src/`.
-- `dist/skill-evidence.js` is the `skill-used` assertion, also loaded by file URL; keep its explicit pack entry. Evidence is a reported skill call, a completed read of the installed `SKILL.md` inside the workdir, or a successful shell command naming `SKILL.md` whose output carries the skill's frontmatter name.
+- `dist/skill-evidence.js` is the `skill-used` assertion, also loaded by file URL; keep its explicit pack entry. Evidence is a reported skill call, a completed read of the installed `SKILL.md` inside the workdir, or a successful shell command whose output carries the installed `SKILL.md`'s opening text.
 - Scratch workdirs live in the system temp dir, never under the root: inside the consumer repo the agent could read the skill's source, its evals, and the repo's own agent guidance.
 - `dist/grok-provider.js` is also loaded by file URL; keep its explicit pack entry. Grok `skill-used` evidence is a completed native `read_file` call for the installed `.grok/skills/<skill>/SKILL.md`, not a mention in chat output.
 - `pack.fixedExtension` is `false` on purpose. The package is `type: module`, so `.js` is already ESM; the default would emit `.mjs` and quietly move the `bin` target out from under the tests and the tarball.

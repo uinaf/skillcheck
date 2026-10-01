@@ -1149,18 +1149,34 @@ test("generateRun: the config and manifests that carry criteria are owner-only",
   }
 });
 
-test("skill evidence: a shell print of SKILL.md showing this skill's frontmatter", async () => {
+test("skill evidence: shell output carrying the installed SKILL.md's opening", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
-  const check = (command: string, output: string, is_error = false) =>
-    assertSkillUsed("", {
-      vars: { workdir: "/tmp/none" },
-      config: { skill: "demo", required: true },
-      metadata: { toolCalls: [{ name: "Bash", input: { command }, is_error, output }] },
-    });
-  const md = "---\nname: demo\ndescription: d\n---\nbody";
-  assert.equal(check("cd .claude/skills/demo && cat SKILL.md", md).pass, true);
-  assert.equal(check("cat SKILL.md", md.replace("name: demo", "name: other")).pass, false);
-  assert.equal(check("cat SKILL.md", md, true).pass, false, "a failed command is no evidence");
-  assert.equal(check("cat notes.md", md).pass, false, "the command must name SKILL.md");
-  assert.equal(check("cat SKILL.md", md.replace("name: demo", "name: demo-two")).pass, false);
+  const dir = tmp("shell-evidence");
+  try {
+    const workdir = path.join(dir, "workdir");
+    const md =
+      "---\nname: demo\ndescription: Prepare an independent review contract.\n---\nbody text";
+    fs.mkdirSync(path.join(workdir, ".claude", "skills", "demo"), { recursive: true });
+    fs.writeFileSync(path.join(workdir, ".claude", "skills", "demo", "SKILL.md"), md);
+    const check = (output: string, is_error = false) =>
+      assertSkillUsed("", {
+        vars: { workdir },
+        config: { skill: "demo", required: true },
+        metadata: {
+          toolCalls: [
+            {
+              name: "Bash",
+              input: { command: "for f in $(find .claude -type f); do cat $f; done" },
+              is_error,
+              output,
+            },
+          ],
+        },
+      });
+    assert.equal(check(`== .claude/skills/demo/SKILL.md\n${md}\n`).pass, true);
+    assert.equal(check(md, true).pass, false, "a failed command is no evidence");
+    assert.equal(check("---\nname: demo\n---").pass, false, "a name alone is no evidence");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
