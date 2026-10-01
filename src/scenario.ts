@@ -187,6 +187,16 @@ export function stripHiddenFlag(skillMd: string): string {
 }
 
 // Inline destinations, bare or in angle brackets, and reference definitions.
+// Inside the isolated image: its env marker plus a container runtime's marker
+// file, so the variable alone on a host cannot claim isolation or turn off the
+// Codex sandbox.
+export function isIsolated(): boolean {
+  return (
+    process.env.SKILLCHECK_ISOLATED === "1" &&
+    (fs.existsSync("/.dockerenv") || fs.existsSync("/run/.containerenv"))
+  );
+}
+
 const MARKDOWN_LINK = /\]\(\s*<([^>]+)>|\]\(\s*([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm;
 
 // Skills under the same root that the skill's Markdown links to, followed
@@ -319,7 +329,8 @@ export function materialize(
   };
   walk(workdir);
   const manifestPath = path.join(runDir, "manifest.json");
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  // Owner-only: in the isolated image the agent runs as another user.
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), { mode: 0o600 });
   return { workdir, manifestPath };
 }
 
@@ -344,8 +355,7 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
         enable_streaming: true, // required for skill-used evidence
         // Inside the isolated image the container is the sandbox, and Codex's own
         // namespace sandbox cannot start there, so every command would fail.
-        sandbox_mode:
-          process.env.SKILLCHECK_ISOLATED === "1" ? "danger-full-access" : "workspace-write",
+        sandbox_mode: isIsolated() ? "danger-full-access" : "workspace-write",
         network_access_enabled: true,
         web_search_enabled: true,
         // The copied config.toml may enable plugins, and Codex installs them
@@ -564,6 +574,30 @@ export function privateHome(dir: string): void {
   }
 }
 
+// In the isolated image skillcheck runs as root and every agent as the
+// unprivileged user named by SKILLCHECK_AGENT_UID (container/agent-wrapper.sh).
+// The agent owns only its workdirs and the run's homes; directories on the way
+// are traverse-only, and the config and manifests stay root-only.
+export function handOverToAgent(runDir: string, trials: TrialDir[]): void {
+  const uid = Number(process.env.SKILLCHECK_AGENT_UID);
+  const gid = Number(process.env.SKILLCHECK_AGENT_GID ?? process.env.SKILLCHECK_AGENT_UID);
+  if (!Number.isInteger(uid) || !Number.isInteger(gid))
+    throw new Error("isolated run without SKILLCHECK_AGENT_UID: refusing to run the agent as root");
+  const own = (p: string): void => {
+    fs.lchownSync(p, uid, gid);
+    if (fs.lstatSync(p).isDirectory()) for (const e of fs.readdirSync(p)) own(path.join(p, e));
+  };
+  for (const dir of [path.dirname(runDir), runDir]) fs.chmodSync(dir, 0o711);
+  for (const t of trials) {
+    fs.chmodSync(path.dirname(t.workdir), 0o711);
+    own(t.workdir);
+  }
+  for (const home of ["codex-home", "home"]) {
+    const p = path.join(runDir, home);
+    if (fs.existsSync(p)) own(p);
+  }
+}
+
 export function generateRun(
   scenarioDir: string,
   opts: RunOptions,
@@ -593,6 +627,8 @@ export function generateRun(
 
   const config = buildConfig(s, trials, opts, paths);
   const configPath = path.join(runDir, "promptfooconfig.json");
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  // The config carries the grading criteria; the agent must never read it.
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+  if (isIsolated()) handOverToAgent(runDir, trials);
   return { name, configPath, skill: s.skill, scenario: s.scenario };
 }

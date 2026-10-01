@@ -11,6 +11,7 @@ import {
   DEFAULT_CLAUDE_AGENT,
   encodeRunNamePart,
   generateRun,
+  isIsolated,
   requiredEvalPackages,
   resolvePackageDir,
   runNameFor,
@@ -173,7 +174,7 @@ export function runConfigOf(opts: RunOptions): RunConfig {
     judge_effort: opts.judgeEffort ?? null,
     trials: opts.trials ?? 1,
     agent_access: "online",
-    isolated: process.env.SKILLCHECK_ISOLATED === "1",
+    isolated: isIsolated(),
   };
 }
 
@@ -648,7 +649,7 @@ const RUN_FLAGS =
 // Outside the isolated image the agent shares the operator's machine: it can
 // read installed skills, plugins, guidance, and any file by absolute path.
 function warnHostRun(): void {
-  if (process.env.SKILLCHECK_ISOLATED === "1") return;
+  if (isIsolated()) return;
   console.error(
     "warning: host run; the agent can read this machine's installed skills, plugins, and files, so scores are not isolated. Run in the isolated image: docs/usage.md#isolated-runs",
   );

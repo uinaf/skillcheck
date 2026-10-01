@@ -59,29 +59,38 @@ those harnesses, omitting `--agent` leaves the model to that CLI's own default.
 
 ### Isolated runs
 
-Run evals inside the image in [container/](../container/Dockerfile). On the
-host, the agent shares the operator's machine: it can read installed skills,
-enabled plugins, global guidance, and any file by absolute path, so a control
-can load the skill it withholds and a skill run can load another copy. The
-per-run homes described in [the workdir](scenarios.md#the-workdir) only hide
-known locations. `run` and `sweep` warn when they are not isolated.
+Run evals inside the image in [container/](../container/Dockerfile), which
+follows promptfoo's guidance for
+[coding agents](https://www.promptfoo.dev/docs/guides/evaluate-coding-agents/):
+a workspace is not a sandbox, so agents run in an ephemeral container with a
+read-only mount of the repository, writes on a separate volume, a
+project-local Codex home, and only the credentials they need. On the host the
+agent shares the operator's machine: it can read installed skills, enabled
+plugins, global guidance, and any file by absolute path. `run` and `sweep` warn
+when they are not isolated.
 
 ```sh
 docker build -t skillcheck:<version> --build-arg SKILLCHECK_VERSION=<version> container
 docker run --rm --env-file <owner-only env file> \
-  -v "$PWD:/work" \
-  -v <minimal codex config.toml>:/home/eval/.codex/config.toml:ro \
-  skillcheck:<version> run --root /work skills/<skill>/evals/<scenario> --trials 3
+  -v "$PWD:/srv/work:ro" -v "$PWD/.skillcheck:/srv/work/.skillcheck" \
+  -v <codex config.toml>:/etc/skillcheck/codex/config.toml:ro \
+  skillcheck:<version> run --root /srv/work skills/<skill>/evals/<scenario> --trials 3
 ```
 
-The image holds skillcheck, its eval peers, and common shell tools; its home is
-empty. Mount only the root under test, pass Claude gateway auth through the env
-file ([auth](#auth)), and mount a Codex `config.toml` written for the run that
-names only the model provider and its auth, never the operator's own. Codex's
+skillcheck runs as root and reads the repository from `/srv`, which only root
+can enter. Each agent binary starts through a wrapper that drops to the
+unprivileged `agent` user, which owns only its workdir and the run's homes; the
+run's promptfoo config and manifests, which carry the criteria, and promptfoo's
+own state stay root-only. The image's home is empty. Pass Claude gateway auth
+through the env file ([auth](#auth)) and mount a Codex `config.toml` written for
+the run that names only the model provider and its auth, never the operator's
+own; a token its auth command reads must be readable by the agent user. Codex's
 namespace sandbox cannot start inside a container, so skillcheck runs it with
-full access there; the container is the boundary. Results record `isolated`
-in their run configuration, so `summarize` refuses to mix isolated and host rows
-and `sweep` reruns host results.
+full access there; the container and the user drop are the boundary. A run
+counts as isolated only when the image's marker variable and a container
+runtime's marker file are both present; results record `isolated` in their run
+configuration, so `summarize` refuses to mix isolated and host rows and `sweep`
+reruns host results.
 
 ### Trials
 

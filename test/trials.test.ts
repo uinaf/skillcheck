@@ -1116,7 +1116,7 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
   }
 });
 
-test("isolated image: recorded in the run config, and Codex skips its own sandbox", () => {
+test("isolated image: the env marker alone on a host claims nothing", () => {
   const dir = tmp("isolated");
   const saved = process.env.SKILLCHECK_ISOLATED;
   try {
@@ -1127,11 +1127,24 @@ test("isolated image: recorded in the run config, and Codex skips its own sandbo
     assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, false);
     assert.equal(provider().sandbox_mode, "workspace-write");
     process.env.SKILLCHECK_ISOLATED = "1";
-    assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, true);
-    assert.equal(provider().sandbox_mode, "danger-full-access");
+    const container = fs.existsSync("/.dockerenv") || fs.existsSync("/run/.containerenv");
+    assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, container);
+    assert.equal(provider().sandbox_mode, container ? "danger-full-access" : "workspace-write");
   } finally {
     if (saved === undefined) delete process.env.SKILLCHECK_ISOLATED;
     else process.env.SKILLCHECK_ISOLATED = saved;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("generateRun: the config and manifests that carry criteria are owner-only", () => {
+  const dir = tmp("modes");
+  try {
+    const { configPath } = generate(dir, { trials: 2 });
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    assert.equal(fs.statSync(configPath).mode & 0o777, 0o600);
+    for (const t of config.tests) assert.equal(fs.statSync(t.vars.manifest).mode & 0o777, 0o600);
+  } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
