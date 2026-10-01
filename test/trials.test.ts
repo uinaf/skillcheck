@@ -1033,10 +1033,24 @@ test("materialize: linked sibling skills are installed transitively, without eva
       path.join(skills, "demo", "SKILL.md"),
       "\nHand off to [b](../b/SKILL.md#when).\n",
     );
-    write("b/SKILL.md", "---\nname: b\ndescription: b\n---\nStyle: [c](references/x.md).\n");
+    write(
+      "b/SKILL.md",
+      "---\nname: b\ndescription: b\n---\nStyle: [c](references/x.md), [e][e].\n\n[e]: ../e/SKILL.md\n",
+    );
     write("b/references/x.md", "See [c](../../c/SKILL.md) and [web](https://example.com).\n");
     write("b/evals/s/criteria.json", "{}");
-    write("c/SKILL.md", "---\nname: c\ndescription: c\n---\nBack to [demo](../demo/SKILL.md).\n");
+    write(
+      "c/SKILL.md",
+      "---\nname: c\ndescription: c\n---\nBack to [demo](../demo/SKILL.md), [f](<../f/SKILL.md>), [out](../out/SKILL.md).\n",
+    );
+    write("e/SKILL.md", "---\nname: e\ndescription: e\n---\n");
+    write("f/SKILL.md", "---\nname: f\ndescription: f\n---\n");
+    fs.mkdirSync(path.join(dir, "elsewhere"));
+    fs.writeFileSync(
+      path.join(dir, "elsewhere", "SKILL.md"),
+      "---\nname: out\ndescription: o\n---\n",
+    );
+    fs.symlinkSync(path.join(dir, "elsewhere"), path.join(skills, "out"));
     write("unlinked/SKILL.md", "---\nname: unlinked\ndescription: u\n---\n");
     const paths = {
       scratchDir: path.join(dir, "scratch"),
@@ -1056,6 +1070,8 @@ test("materialize: linked sibling skills are installed transitively, without eva
         "b",
         "c",
         "demo",
+        "e",
+        "f",
       ]);
       assert.equal(fs.existsSync(path.join(workdir, root, "skills", "b", "evals")), false);
       assert.ok(fs.existsSync(path.join(workdir, root, "skills", "b", "references", "x.md")));
@@ -1077,6 +1093,7 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
       "installed copy\n",
     );
     fs.mkdirSync(path.join(operator, ".codex"));
+    fs.mkdirSync(path.join(operator, ".claude", "skills", "demo"), { recursive: true });
     fs.mkdirSync(path.join(operator, ".config", "gateway"), { recursive: true });
     fs.writeFileSync(path.join(operator, ".config", "gateway", "auth.json"), "{}");
     process.env.HOME = operator;

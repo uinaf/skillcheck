@@ -186,24 +186,29 @@ export function stripHiddenFlag(skillMd: string): string {
   return kept.join("\n");
 }
 
-const MARKDOWN_LINK = /\]\(([^)\s]+)\)/g;
+// Inline destinations, bare or in angle brackets, and reference definitions.
+const MARKDOWN_LINK = /\]\(<([^>]+)>|\]\(([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm;
 
 // Skills under the same root that the skill's Markdown links to, followed
 // transitively, excluding the skill itself and anything under evals/.
 export function linkedSiblings(skillDir: string): string[] {
   const skillsRoot = path.dirname(skillDir);
+  const realRoot = fs.realpathSync(skillsRoot);
   const self = path.basename(skillDir);
   const found = new Set([self]);
   const pending = [skillDir];
   for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
     for (const file of skillMarkdown(dir)) {
-      for (const [, href] of fs.readFileSync(file, "utf8").matchAll(MARKDOWN_LINK)) {
+      for (const m of fs.readFileSync(file, "utf8").matchAll(MARKDOWN_LINK)) {
+        const href = m[1] ?? m[2] ?? m[3];
         if (href.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
         const target = path.resolve(path.dirname(file), href.split("#")[0]);
         const rel = path.relative(skillsRoot, target);
         const name = rel.split(path.sep)[0];
         if (name === "" || name === ".." || path.isAbsolute(rel) || found.has(name)) continue;
         if (!fs.existsSync(path.join(skillsRoot, name, "SKILL.md"))) continue;
+        // A symlinked sibling must not pull in a tree from outside the root.
+        if (path.dirname(fs.realpathSync(path.join(skillsRoot, name))) !== realRoot) continue;
         found.add(name);
         pending.push(path.join(skillsRoot, name));
       }
@@ -538,15 +543,17 @@ export function privateCodexHome(dir: string): void {
   }
 }
 
-// Codex also discovers skills in $HOME/.agents/skills, outside CODEX_HOME. The
-// run's HOME links every entry of the operator's home except .agents and
-// .codex, so auth helpers that read $HOME keep working and no user skill shows.
+// Codex also discovers skills in $HOME/.agents/skills, outside CODEX_HOME, and
+// the workdir installs Codex skills under .claude too. The run's HOME links
+// every entry of the operator's home except those agent roots, so auth helpers
+// that read $HOME keep working and no user skill or guidance shows.
+const HIDDEN_HOME_ENTRIES = new Set([".agents", ".claude", ".codex"]);
 export function privateHome(dir: string): void {
   const source = os.homedir();
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   for (const name of fs.readdirSync(source)) {
-    if (name === ".agents" || name === ".codex") continue;
+    if (HIDDEN_HOME_ENTRIES.has(name)) continue;
     fs.symlinkSync(path.join(source, name), path.join(dir, name));
   }
 }

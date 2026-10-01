@@ -114,14 +114,13 @@ time. It stays outside the root so the agent cannot reach the skill's source,
 its evals, or the repository's own agent guidance. The skill under test is installed where the harness discovers skills:
 `.claude/skills/<skill>/`, plus `.agents/skills/<skill>/` on codex, or
 `.grok/skills/<skill>/` on Grok, with its `evals/` directory excluded, so
-criteria never leak into the agent's context. Sibling skills under the same
-root that the skill links to, followed transitively, are installed beside it
+criteria never leak into the agent's context. Sibling skills under the same root that the skill links to (inline, angle-bracket, or reference links, followed transitively; a symlink out of the root is skipped) are installed beside it
 the same way, so links such as `../other/SKILL.md` resolve as they do when a
 plugin installs the set; a control run installs none of them.
 
 A Codex run gets a private `CODEX_HOME` holding only the operator's
 `config.toml` and `auth.json`, and a private `HOME` that links every entry of
-the operator's home except `.agents` and `.codex`. Auth helpers that read
+the operator's home except `.agents`, `.claude`, and `.codex`. Auth helpers that read
 `$HOME` keep working; the operator's user-level skills and global guidance are
 not visible.
 
