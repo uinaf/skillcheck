@@ -28,6 +28,7 @@ overrides:
   "adm-zip@<0.6.1": "^0.6.1" # GHSA-xcpc-8h2w-3j85, GHSA-vwc7-r8mq-g2x9
   "sharp@<0.35.4": "^0.35.4" # GHSA-f88m-g3jw-g9cj, GHSA-rgj7-g3m4-5g8c
   "axios@<1.20.0": "^1.20.0" # GHSA-c29m-xwm3-cm6r, GHSA-mghh-pgcx-3jjj
+  "basic-ftp@<6.2.1": "^6.2.1" # GHSA-c475-qrg2-pj4r
   vite@*: "catalog:"
 peerDependencyRules:
   allowAny:
