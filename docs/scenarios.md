@@ -57,9 +57,10 @@ assert-set with threshold 0.7. A separate `skill-used` assertion sits outside
 that aggregate, so a run that produces good output without ever loading the
 skill still fails. The skill counts as loaded when the harness reports a skill
 call for it, or when the agent completed a read of the installed
-`<config-root>/skills/<skill>/SKILL.md` in its workdir. Claude Code often reads
-the file directly instead of calling its Skill tool, and either way the same
-instructions reach its context.
+`<config-root>/skills/<skill>/SKILL.md` in its workdir, or a successful shell
+command that names `SKILL.md` and printed this skill's frontmatter `name`.
+Claude Code often reads the file directly instead of calling its Skill tool,
+sometimes from a shell, and either way the same instructions reach its context.
 
 An out-of-lane scenario, where the right answer is to decline the skill, sets
 `"skill_use": "optional"` in `criteria.json`. The assertion then always passes,

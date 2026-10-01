@@ -10,7 +10,7 @@ interface Call {
   name?: unknown;
   is_error?: unknown;
   output?: unknown;
-  input?: { file_path?: unknown } | null;
+  input?: { file_path?: unknown; command?: unknown } | null;
 }
 
 interface EvidenceContext {
@@ -71,6 +71,24 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     return inside && target !== undefined && installed.has(target);
   });
   if (read) return `read of the installed ${skill}/SKILL.md`;
+
+  // Agents also print the file from a shell (`cd .claude/skills/x && cat
+  // SKILL.md`), which a path check cannot follow. Count a successful shell call
+  // that names SKILL.md and whose output carries this skill's frontmatter name.
+  const nameLine = new RegExp(
+    `^name:\\s*["']?${skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?\\s*$`,
+    "m",
+  );
+  const shown = calls(metadata?.toolCalls).find(
+    (c) =>
+      c.name === "Bash" &&
+      c.is_error === false &&
+      typeof c.input?.command === "string" &&
+      c.input.command.includes("SKILL.md") &&
+      typeof c.output === "string" &&
+      nameLine.test(c.output),
+  );
+  if (shown) return `shell read of the installed ${skill}/SKILL.md`;
   return undefined;
 }
 
