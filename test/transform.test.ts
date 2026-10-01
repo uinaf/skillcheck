@@ -23,3 +23,23 @@ test("graded output excludes installed dependencies but includes deliverables", 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("graded output skips tool caches the agent's commands create", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-transform-"));
+  try {
+    const workdir = path.join(dir, "workdir");
+    for (const cache of [".cache/npm/_cacache", ".npm/_logs", ".pnpm-store/v10"]) {
+      fs.mkdirSync(path.join(workdir, cache), { recursive: true });
+      fs.writeFileSync(path.join(workdir, cache, "entry"), "CACHE-BLOB".repeat(10_000));
+    }
+    fs.writeFileSync(path.join(workdir, "eslint.config.js"), "export default [];");
+    const manifest = path.join(dir, "manifest.json");
+    fs.writeFileSync(manifest, "{}");
+
+    const output = transform("done", { vars: { workdir, manifest } });
+    assert.match(output, /OUTPUT FILE: eslint.config.js/);
+    assert.doesNotMatch(output, /CACHE-BLOB|TRUNCATED/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

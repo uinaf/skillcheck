@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { SKIPPED_DIRS } from "./transform.ts";
 
 // An inline input file in task.md, materialized into the workdir.
 export const FILE_BLOCK = /^=+ FILE: (.+?) =+\n([\s\S]*?)\n=+ END FILE =+$/gm;
@@ -185,6 +186,52 @@ export function stripHiddenFlag(skillMd: string): string {
   return kept.join("\n");
 }
 
+// Inline destinations, bare or in angle brackets, and reference definitions.
+const MARKDOWN_LINK = /\]\(\s*<([^>]+)>|\]\(\s*([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm;
+
+// Skills under the same root that the skill's Markdown links to, followed
+// transitively, excluding the skill itself and anything under evals/.
+export function linkedSiblings(skillDir: string): string[] {
+  const skillsRoot = path.dirname(skillDir);
+  const realRoot = fs.realpathSync(skillsRoot);
+  const self = path.basename(skillDir);
+  const found = new Set([self]);
+  const pending = [skillDir];
+  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+    for (const file of skillMarkdown(dir)) {
+      for (const m of fs.readFileSync(file, "utf8").matchAll(MARKDOWN_LINK)) {
+        const href = m[1] ?? m[2] ?? m[3];
+        if (href.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(href)) continue;
+        const target = path.resolve(path.dirname(file), href.split("#")[0]);
+        const rel = path.relative(skillsRoot, target);
+        const name = rel.split(path.sep)[0];
+        if (name === "" || name === ".." || path.isAbsolute(rel) || found.has(name)) continue;
+        if (!fs.existsSync(path.join(skillsRoot, name, "SKILL.md"))) continue;
+        // A symlinked sibling must not pull in a tree from outside the root.
+        if (path.dirname(fs.realpathSync(path.join(skillsRoot, name))) !== realRoot) continue;
+        found.add(name);
+        pending.push(path.join(skillsRoot, name));
+      }
+    }
+  }
+  found.delete(self);
+  return [...found].sort();
+}
+
+function skillMarkdown(dir: string): string[] {
+  const out: string[] = [];
+  const walk = (d: string): void => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) {
+        if (!(d === dir && e.name === "evals")) walk(p);
+      } else if (e.isFile() && e.name.endsWith(".md")) out.push(p);
+    }
+  };
+  walk(dir);
+  return out;
+}
+
 // Reserved top-level workdir entries: fixtures may not write agent config roots.
 const RESERVED = new Set([".claude", ".agents", ".grok", "node_modules"]);
 
@@ -229,11 +276,18 @@ export function materialize(
       : harness === "grok"
         ? [".grok"]
         : [".claude"];
+  // Sibling skills it links to come along so those links resolve, as they do
+  // when the plugin installs the set together.
+  const skillsRoot = path.dirname(s.skillDir);
+  const installed = control ? [] : [s.skill, ...linkedSiblings(s.skillDir)];
   for (const root of roots) {
-    fs.cpSync(s.skillDir, path.join(workdir, root, "skills", s.skill), {
-      recursive: true,
-      filter: (src) => path.basename(src) !== "evals",
-    });
+    for (const name of installed) {
+      const from = path.join(skillsRoot, name);
+      fs.cpSync(from, path.join(workdir, root, "skills", name), {
+        recursive: true,
+        filter: (src) => src !== path.join(from, "evals"),
+      });
+    }
   }
 
   // Hidden skills (disable-model-invocation) are explicit-invoke-only in
@@ -248,14 +302,14 @@ export function materialize(
   }
 
   // Manifest of pre-existing files so transform.ts can find what the agent
-  // wrote. Claude and Grok config roots and installed dependencies are excluded
-  // (matching transform.ts's walk); Codex's .agents/ files are hashed as inputs.
+  // wrote. SKIPPED_DIRS are excluded (matching transform.ts's walk); Codex's
+  // .agents/ files are hashed as inputs.
   const manifest: Record<string, string> = {};
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (e.name !== ".claude" && e.name !== ".grok" && e.name !== "node_modules") walk(p);
+        if (!SKIPPED_DIRS.has(e.name)) walk(p);
       } else {
         manifest[path.relative(workdir, p)] = createHash("sha256")
           .update(fs.readFileSync(p))
@@ -291,7 +345,10 @@ function agentProvider(opts: RunOptions, workdir: string, skill: string, paths: 
         sandbox_mode: "workspace-write",
         network_access_enabled: true,
         web_search_enabled: true,
-        cli_env: { CODEX_HOME: path.join(workdir, "..", "..", "codex-home") },
+        cli_env: {
+          CODEX_HOME: path.join(workdir, "..", "..", "codex-home"),
+          HOME: path.join(workdir, "..", "..", "home"),
+        },
       },
     };
   }
@@ -486,6 +543,21 @@ export function privateCodexHome(dir: string): void {
   }
 }
 
+// Codex also discovers skills in $HOME/.agents/skills, outside CODEX_HOME, and
+// the workdir installs Codex skills under .claude too. The run's HOME links
+// every entry of the operator's home except those agent roots, so auth helpers
+// that read $HOME keep working and no user skill or guidance shows.
+const HIDDEN_HOME_ENTRIES = new Set([".agents", ".claude", ".codex"]);
+export function privateHome(dir: string): void {
+  const source = os.homedir();
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const name of fs.readdirSync(source)) {
+    if (HIDDEN_HOME_ENTRIES.has(name)) continue;
+    fs.symlinkSync(path.join(source, name), path.join(dir, name));
+  }
+}
+
 export function generateRun(
   scenarioDir: string,
   opts: RunOptions,
@@ -499,7 +571,10 @@ export function generateRun(
     materialize(s, path.join(runDir, trialLabel(i)), opts.harness, opts.control),
   );
 
-  if (opts.harness === "codex") privateCodexHome(path.join(runDir, "codex-home"));
+  if (opts.harness === "codex") {
+    privateCodexHome(path.join(runDir, "codex-home"));
+    privateHome(path.join(runDir, "home"));
+  }
 
   // promptfoo resolves provider SDKs from the generated config directory. The
   // link stays outside workdir, hidden from the agent and its manifest.
