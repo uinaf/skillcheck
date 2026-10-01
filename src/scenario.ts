@@ -187,7 +187,7 @@ export function stripHiddenFlag(skillMd: string): string {
 }
 
 // Inline destinations, bare or in angle brackets, and reference definitions.
-const MARKDOWN_LINK = /\]\(<([^>]+)>|\]\(([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm;
+const MARKDOWN_LINK = /\]\(\s*<([^>]+)>|\]\(\s*([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?([^\s>]+)/gm;
 
 // Skills under the same root that the skill's Markdown links to, followed
 // transitively, excluding the skill itself and anything under evals/.

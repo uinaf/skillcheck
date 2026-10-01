@@ -1035,7 +1035,7 @@ test("materialize: linked sibling skills are installed transitively, without eva
     );
     write(
       "b/SKILL.md",
-      "---\nname: b\ndescription: b\n---\nStyle: [c](references/x.md), [e][e].\n\n[e]: ../e/SKILL.md\n",
+      "---\nname: b\ndescription: b\n---\nStyle: [c]( references/x.md ), [e][e].\n\n[e]: ../e/SKILL.md\n",
     );
     write("b/references/x.md", "See [c](../../c/SKILL.md) and [web](https://example.com).\n");
     write("b/evals/s/criteria.json", "{}");
