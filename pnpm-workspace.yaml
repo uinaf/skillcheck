@@ -12,6 +12,8 @@ ignoredOptionalDependencies:
   # promptfoo security-scan path; skillcheck never runs it. Its extract-zip has no patch for
   # GHSA-jmr9-qjv8-65gv, GHSA-7pqw-9j4j-h8q3. Drop once a patched extract-zip ships.
   - "@openai/codex-security"
+  # promptfoo optional JKS path; node-forge has no patched release for GHSA-86w9-cpqp-85rv yet.
+  - jks-js
 minimumReleaseAgeExclude:
   - adm-zip@0.6.1
   - "@voidzero-dev/vite-plus-core@1.0.0"
