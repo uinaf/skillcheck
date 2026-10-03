@@ -524,6 +524,14 @@ export function buildConfig(
                   ...(opts.judgeEffort ? { effort: opts.judgeEffort } : {}),
                   apiKeyRequired: false,
                   max_turns: 3,
+                  // promptfoo runs each judge call in a fresh temp dir, and auto
+                  // memory writes that dir's path into the system prompt, so no
+                  // two calls would share a cached prefix. The judge has no tools
+                  // to use memory with.
+                  env: { CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" },
+                  // A fixed title skips the second request, on the judge model,
+                  // that names each session.
+                  title: "skillcheck judge",
                   output_format: {
                     type: "json_schema",
                     schema: {

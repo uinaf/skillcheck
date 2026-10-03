@@ -174,6 +174,14 @@ skillcheck run <scenario-dir> --agent claude-opus-5-5 --agent-effort medium \
   --judge claude-opus-5-5 --judge-effort high --trials 3
 ```
 
+The SDK judge runs Claude Code with auto memory off and a fixed session title.
+Each call gets a fresh temp working directory, and the memory section would
+put that path into the system prompt; without it, every call sends the same
+system prompt, which the prompt cache can share. A gateway that moves the
+caller's system prompt behind the first user message prevents that sharing.
+The fixed title saves the second request, on the judge model, that Claude Code
+otherwise sends per call to name the session.
+
 ## Sweep
 
 ```sh
