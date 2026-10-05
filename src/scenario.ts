@@ -79,51 +79,25 @@ export function loadScenario(scenarioDir: string): Scenario {
   const [, skill, scenario] = match;
 
   const taskMd = fs.readFileSync(path.join(scenarioDir, "task.md"), "utf8");
-  const criteria: Criteria = JSON.parse(
-    fs.readFileSync(path.join(scenarioDir, "criteria.json"), "utf8"),
-  );
-  if (
-    criteria.type !== "weighted_checklist" ||
-    !Array.isArray(criteria.checklist) ||
-    criteria.checklist.length === 0
-  ) {
-    throw new Error(`unsupported or empty criteria in ${scenarioDir}`);
+  const skillDir = path.resolve(scenarioDir, "../..");
+  const hidden = isHiddenSkill(fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"));
+  let parsed: { criteria: Criteria; alternatives: string[] };
+  try {
+    parsed = parseCriteria(scenarioDir, hidden);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${path.join(scenarioDir, "criteria.json")}: ${message}`, { cause: err });
   }
-  if (
-    criteria.skill_use !== undefined &&
-    !["required", "optional", "forbidden"].includes(criteria.skill_use)
-  ) {
-    throw new Error(`skill_use must be "required", "optional", or "forbidden" in ${scenarioDir}`);
-  }
-  for (const item of criteria.checklist) {
-    const ok =
-      typeof item?.name === "string" &&
-      item.name.trim() !== "" &&
-      typeof item?.description === "string" &&
-      item.description.trim() !== "" &&
-      Number.isFinite(item?.max_score) &&
-      item.max_score > 0;
-    if (!ok) throw new Error(`invalid checklist item in ${scenarioDir}: ${JSON.stringify(item)}`);
-  }
+  const { criteria, alternatives } = parsed;
 
   const files: Scenario["files"] = [];
   const task = taskMd.replace(FILE_BLOCK, (_, name: string, content: string) => {
     files.push({ name: name.trim(), content: content + "\n" });
     return `(Input file \`${name.trim()}\` is available in your working directory.)`;
   });
-  let prompt = task;
-
   // Hidden skills only ever run from an explicit user invocation, so the eval
   // task carries one; materialize() strips the flag from the installed copy.
-  const skillDir = path.resolve(scenarioDir, "../..");
-  if (isHiddenSkill(fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"))) {
-    if (criteria.skill_use === "forbidden" || criteria.install !== undefined)
-      throw new Error(
-        `a hidden skill is always invoked, so it has no routing to test: ${scenarioDir}`,
-      );
-    prompt = `Use the ${skill} skill for this task.\n\n${prompt}`;
-  }
-  const alternatives = resolveInstall(skillDir, criteria.install, scenarioDir);
+  const prompt = hidden ? `Use the ${skill} skill for this task.\n\n${task}` : task;
 
   return {
     skill,
@@ -138,15 +112,54 @@ export function loadScenario(scenarioDir: string): Scenario {
   };
 }
 
+// The criteria.json contract a run enforces before it starts. Lint calls this
+// too, so a file that would stop a sweep midway fails in CI instead. Messages
+// carry no location; each caller names the file its own way.
+export function parseCriteria(
+  scenarioDir: string,
+  hidden: boolean,
+): { criteria: Criteria; alternatives: string[] } {
+  const text = fs.readFileSync(path.join(scenarioDir, "criteria.json"), "utf8");
+  let criteria: Criteria;
+  try {
+    criteria = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`not valid JSON: ${err instanceof Error ? err.message : String(err)}`, {
+      cause: err,
+    });
+  }
+  if (typeof criteria !== "object" || criteria === null || Array.isArray(criteria))
+    throw new Error("must be a JSON object");
+  if (criteria.type !== "weighted_checklist")
+    throw new Error(`type must be "weighted_checklist", got ${JSON.stringify(criteria.type)}`);
+  if (!Array.isArray(criteria.checklist) || criteria.checklist.length === 0)
+    throw new Error("checklist must be a non-empty array");
+  if (
+    criteria.skill_use !== undefined &&
+    !["required", "optional", "forbidden"].includes(criteria.skill_use)
+  ) {
+    throw new Error(`skill_use must be "required", "optional", or "forbidden"`);
+  }
+  for (const [i, item] of criteria.checklist.entries()) {
+    for (const key of ["name", "description"] as const) {
+      const value: unknown = item?.[key];
+      if (typeof value !== "string" || value.trim() === "")
+        throw new Error(`checklist[${i}].${key} must be a non-empty string`);
+    }
+    if (!Number.isFinite(item.max_score) || item.max_score <= 0)
+      throw new Error(`checklist[${i}].max_score must be a positive number`);
+  }
+  if (hidden && (criteria.skill_use === "forbidden" || criteria.install !== undefined))
+    throw new Error("a hidden skill is always invoked, so it has no routing to test");
+  const alternatives = resolveInstall(path.resolve(scenarioDir, "../.."), criteria.install);
+  return { criteria, alternatives };
+}
+
 // Alternatives are real directories with a real SKILL.md: a symlink could
 // alias the skill under test, whose installed copy would then carry its evals,
 // or pull a file from outside the root. A hidden skill only loads on an
 // explicit invocation in production, so it is never an alternative.
-function resolveInstall(
-  skillDir: string,
-  install: Criteria["install"],
-  scenarioDir: string,
-): string[] {
+function resolveInstall(skillDir: string, install: Criteria["install"]): string[] {
   if (install === undefined) return [];
   const skillsRoot = path.dirname(skillDir);
   const self = path.basename(skillDir);
@@ -163,16 +176,15 @@ function resolveInstall(
   };
   if (install === "all") {
     const all = fs.readdirSync(skillsRoot).filter(invocable).sort();
-    if (all.length === 0)
-      throw new Error(`install "all" finds no other model-invocable skill for ${scenarioDir}`);
+    if (all.length === 0) throw new Error(`install "all" finds no other model-invocable skill`);
     return all;
   }
   if (!Array.isArray(install) || install.length === 0)
-    throw new Error(`install must be "all" or a non-empty list of skills in ${scenarioDir}`);
+    throw new Error(`install must be "all" or a non-empty list of skills`);
   for (const name of install) {
     if (typeof name !== "string" || name.includes("/") || !invocable(name))
       throw new Error(
-        `install names ${JSON.stringify(name)}, not another model-invocable skill under the root, in ${scenarioDir}`,
+        `install names ${JSON.stringify(name)}, not another model-invocable skill under the root`,
       );
   }
   return [...new Set(install)].sort();

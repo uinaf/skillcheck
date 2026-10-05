@@ -1033,6 +1033,53 @@ test("lint: broken fixture tree fails with each finding named", () => {
   for (const line of findings) assert.match(line, /^skills\/wrongname\/\S+: \S/);
 });
 
+test("lint: a criteria.json that run would reject is a finding on that file", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-criteria-"));
+  try {
+    fs.cpSync(path.join(fixtures, "clean"), dir, { recursive: true });
+    const evals = path.join(dir, "skills", "demo", "evals");
+    const good = fs.readFileSync(path.join(evals, "basic", "criteria.json"), "utf8");
+    const base = JSON.parse(good);
+    const item = { name: "outcome-first", description: "Opens with the outcome.", max_score: 2 };
+    const without = (key: string) =>
+      JSON.stringify({
+        ...base,
+        checklist: [item, Object.fromEntries(Object.entries(item).filter(([k]) => k !== key))],
+      });
+    const cases: Record<string, [string, string]> = {
+      truncated: [good.slice(0, good.length / 2), "not valid JSON: "],
+      "no-name": [without("name"), "checklist[1].name must be a non-empty string"],
+      "no-description": [
+        without("description"),
+        "checklist[1].description must be a non-empty string",
+      ],
+      "no-max-score": [without("max_score"), "checklist[1].max_score must be a positive number"],
+      "unknown-install": [
+        JSON.stringify({ ...base, install: ["nope"] }),
+        'install names "nope", not another model-invocable skill under the root',
+      ],
+    };
+    for (const [name, [text]] of Object.entries(cases)) {
+      fs.cpSync(path.join(evals, "basic"), path.join(evals, name), { recursive: true });
+      fs.writeFileSync(path.join(evals, name, "criteria.json"), text);
+    }
+    const r = runCli(["lint", dir]);
+    assert.equal(r.rc, 1);
+    const lines = r.stderr.trim().split("\n");
+    assert.equal(
+      lines.pop(),
+      `skill lint: ${Object.keys(cases).length} error(s) across 2 package(s)`,
+    );
+    for (const [name, [, message]] of Object.entries(cases)) {
+      const prefix = `skills/demo/evals/${name}/criteria.json: `;
+      const line = lines.find((l) => l.startsWith(prefix));
+      assert.ok(line?.startsWith(prefix + message), `${name}: ${line}`);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("lint: --root is equivalent to the positional root", () => {
   const positional = runCli(["lint", path.join(fixtures, "clean")]);
   const flagged = runCli(["lint", "--root", path.join(fixtures, "clean")]);

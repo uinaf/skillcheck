@@ -23,6 +23,9 @@ Checks each `<root>/skills/<skill>/`:
 - No eval `task.md` names a skill from the root, outside its inline input
   files. A named skill gives routing away, and a no-skill control can read
   the operator's installed copy
+- Every eval `criteria.json` is valid JSON and meets the
+  [criteria contract](scenarios.md#criteriajson) `run` enforces before it
+  starts, so a broken file fails CI instead of stopping a sweep midway
 
 Code spans and fenced blocks are stripped before links are checked, so example
 links never fail. External schemes and `#anchors` pass. Dot-directories under

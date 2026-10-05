@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { FILE_BLOCK } from "./scenario.ts";
+import { FILE_BLOCK, isHiddenSkill, parseCriteria } from "./scenario.ts";
 
 const ALLOWED_KEYS = new Set(["name", "description", "disable-model-invocation"]);
 
@@ -104,7 +104,7 @@ export function lintSkills(root: string): LintReport {
       skills.push(path.join(dir, entry.name));
     }
   }
-  lintTasks(skills, root, errors);
+  lintEvals(skills, root, errors);
   return { errors, count: skills.length };
 }
 
@@ -113,15 +113,28 @@ export function lintSkills(root: string): LintReport {
 // installed copy of it. Any skill in the root counts, not just the one under
 // test. Inline input files are repository state, where a CLI that shares its
 // skill's name legitimately appears, so only the prompt prose is checked.
-function lintTasks(skills: string[], root: string, errors: string[]): void {
+function lintEvals(skills: string[], root: string, errors: string[]): void {
   const names = skills.map((dir) => path.basename(dir));
   for (const dir of skills) {
     const evals = path.join(dir, "evals");
     if (!fs.existsSync(evals)) continue;
+    const skillMd = path.join(dir, "SKILL.md");
+    const hidden = fs.existsSync(skillMd) && isHiddenSkill(fs.readFileSync(skillMd, "utf8"));
     // Same enumeration as sweep's discovery, so dot-dirs are not skipped.
     for (const scenario of fs.readdirSync(evals, { withFileTypes: true })) {
-      const file = path.join(evals, scenario.name, "task.md");
-      if (!scenario.isDirectory() || !fs.existsSync(file)) continue;
+      if (!scenario.isDirectory()) continue;
+      const scenarioDir = path.join(evals, scenario.name);
+      const criteria = path.join(scenarioDir, "criteria.json");
+      if (fs.existsSync(criteria)) {
+        try {
+          parseCriteria(scenarioDir, hidden);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          errors.push(`${path.relative(root, criteria)}: ${message}`);
+        }
+      }
+      const file = path.join(scenarioDir, "task.md");
+      if (!fs.existsSync(file)) continue;
       const text = fs.readFileSync(file, "utf8").replace(FILE_BLOCK, "");
       for (const name of names) {
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

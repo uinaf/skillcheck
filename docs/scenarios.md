@@ -51,6 +51,8 @@ its steps, or hint at the checklist: routing is part of what is being measured.
 
 `type` must be `weighted_checklist` and the checklist must be non-empty. Every
 item needs a non-empty `name` and `description` and a positive `max_score`.
+Weights are relative; no total is required. `skillcheck lint` applies these
+checks and the `skill_use` and `install` rules below to every `criteria.json`.
 
 Each item becomes one `llm-rubric` assertion weighted by `max_score`, inside an
 assert-set with threshold 0.7. A separate `skill-used` assertion sits outside
