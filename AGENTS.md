@@ -44,7 +44,7 @@ Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test r
 | `.github/workflows/release.yml` | Push to `main`                | verify → npm publish (`release` environment)  |
 
 `release` waits on `verify`, which ends with the push-time scan. `[skip ci]` is declared once on `verify`, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
-`verify.yml` groups concurrency on `github.workflow` and `github.ref`, which resolve to the caller when called from `release.yml`, so a called run never collides with a PR run. `pnpm-workspace.yaml` denies the browser, ONNX, and image-processing build scripts that the optional promptfoo peer pulls in: scenarios grade text with a remote judge and never take that path.
+`verify.yml` groups pull-request runs by ref and gives every other run its own group, and `release.yml` queues every push with `queue: max`, so no pushed range goes unscanned. Called from `release.yml`, `github.workflow` resolves to the caller, and the `verify-` prefix keeps the called group apart from the caller's `main-` group. `pnpm-workspace.yaml` denies the browser, ONNX, and image-processing build scripts that the optional promptfoo peer pulls in: scenarios grade text with a remote judge and never take that path.
 
 `test/consumer.test.ts` packs the tarball, installs it without scripts or eval peers, and runs `skillcheck lint` from `node_modules/.bin`. The same `verify` graph proves both source and artifact locally; CI forces that graph without cache.
 
