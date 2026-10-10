@@ -181,6 +181,7 @@ for (const event of [
   { type: "tool_call", toolCallId: 42, toolName: "read_file", rawInput: {} },
   { type: "tool_call", toolCallId: "read-1", toolName: "read_file", rawInput: [] },
   { type: "tool_call", toolCallId: "read-1", toolName: "read_file", rawInput: { path: 42 } },
+  { type: "tool_call", toolCallId: "read-1", toolName: "read_file", rawInput: { target_file: 42 } },
   { type: "tool_call_update", toolCallId: 42, status: "completed" },
   { type: "tool_call_update", toolCallId: "read-1", status: 42 },
   { type: "end", stopReason: 42 },
