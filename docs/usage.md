@@ -154,7 +154,10 @@ workdir with the skill under `.grok/skills/`. It uses native streaming events
 to count a completed read of that skill's `SKILL.md` as `skill-used` evidence.
 Grok must be logged in locally or have its supported credentials configured.
 The run disables subagents and grants edit permission in the workdir; web
-search stays on. `--agent` selects a Grok model ID.
+search stays on. `--agent` selects a Grok model ID. Malformed fields consumed by
+the provider are reported as run errors. Progress-only tool updates and pending read inputs are
+ignored. Skill-read evidence requires a file path on the initial tool call
+(`path` or `target_file`) and a completed update.
 
 `--judge` takes either a bare Claude model (graded through the Anthropic
 selection in [auth](#auth)) or a provider-qualified promptfoo id, passed

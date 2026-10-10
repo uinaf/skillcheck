@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 import GrokProvider from "../src/grok-provider.ts";
 
-function fixture(events: object[] | ((skillFile: string) => object[])): {
+function fixture(events: unknown[] | ((skillFile: string) => unknown[])): {
   dir: string;
   command: string;
   skillFile: string;
@@ -23,45 +23,49 @@ function fixture(events: object[] | ((skillFile: string) => object[])): {
   return { dir, command, skillFile };
 }
 
-test("Grok provider reports a completed native skill read", async () => {
-  const fixtureRun = fixture((skillFile) => [
-    {
-      type: "tool_call",
-      toolCallId: "read-1",
-      toolName: "read_file",
-      rawInput: { target_file: skillFile },
-    },
-    { type: "tool_call_update", toolCallId: "read-1", status: "completed" },
-    { type: "text", data: "BLUE" },
-    { type: "text", data: "-ORBIT" },
-    {
-      type: "end",
-      stopReason: "end_turn",
-      usage: {
-        input_tokens: 100,
-        output_tokens: 20,
-        total_tokens: 120,
-        cache_read_input_tokens: 10,
+for (const pathField of ["target_file", "path"] as const) {
+  test(`Grok provider reports a completed native skill read using ${pathField}`, async () => {
+    const fixtureRun = fixture((skillFile) => [
+      { type: "session", data: { id: "session-1" } },
+      { type: "tool_call", toolName: "other_tool", rawInput: "unused payload" },
+      {
+        type: "tool_call",
+        toolCallId: "read-1",
+        toolName: "read_file",
+        rawInput: { [pathField]: skillFile },
       },
-      total_cost_usd: 0.01,
-    },
-  ]);
-  try {
-    const result = await new GrokProvider({
-      config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
-    }).callApi("Use the signal skill");
-    assert.deepEqual(result, {
-      output: "BLUE-ORBIT",
-      metadata: {
-        skillCalls: [{ name: "signal", source: "project", path: fixtureRun.skillFile }],
+      { type: "tool_call_update", toolCallId: "read-1", status: "completed" },
+      { type: "text", data: "BLUE" },
+      { type: "text", data: "-ORBIT" },
+      {
+        type: "end",
+        stopReason: "end_turn",
+        usage: {
+          input_tokens: 100,
+          output_tokens: 20,
+          total_tokens: 120,
+          cache_read_input_tokens: 10,
+        },
+        total_cost_usd: 0.01,
       },
-      tokenUsage: { prompt: 100, completion: 20, total: 120, cached: 10 },
-      cost: 0.01,
-    });
-  } finally {
-    fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
-  }
-});
+    ]);
+    try {
+      const result = await new GrokProvider({
+        config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
+      }).callApi("Use the signal skill");
+      assert.deepEqual(result, {
+        output: "BLUE-ORBIT",
+        metadata: {
+          skillCalls: [{ name: "signal", source: "project", path: fixtureRun.skillFile }],
+        },
+        tokenUsage: { prompt: 100, completion: 20, total: 120, cached: 10 },
+        cost: 0.01,
+      });
+    } finally {
+      fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
+    }
+  });
+}
 
 test("Grok provider does not count failed or out-of-workdir reads", async () => {
   const fixtureRun = fixture([
@@ -167,3 +171,62 @@ for (const stdio of ["ignore", "inherit"] as const)
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
     }
   });
+
+for (const event of [
+  null,
+  [],
+  "text",
+  { type: "text", data: 42 },
+  {},
+  { type: "tool_call", toolCallId: 42, toolName: "read_file", rawInput: {} },
+  { type: "tool_call", toolCallId: "read-1", toolName: "read_file", rawInput: [] },
+  { type: "tool_call", toolCallId: "read-1", toolName: "read_file", rawInput: { path: 42 } },
+  { type: "tool_call", toolCallId: "read-1", toolName: "read_file", rawInput: { target_file: 42 } },
+  { type: "tool_call_update", toolCallId: 42, status: "completed" },
+  { type: "tool_call_update", toolCallId: "read-1", status: 42 },
+  { type: "end", stopReason: 42 },
+  { type: "end", stopReason: "end_turn", usage: null },
+  { type: "end", stopReason: "end_turn", usage: { total_tokens: "120" } },
+  { type: "end", stopReason: "end_turn", total_cost_usd: -1 },
+]) {
+  test(`Grok provider rejects malformed event ${JSON.stringify(event)}`, async () => {
+    const fixtureRun = fixture([event, { type: "end", stopReason: "end_turn" }]);
+    try {
+      const result = await new GrokProvider({
+        config: {
+          working_dir: fixtureRun.dir,
+          skill: "signal",
+          command: fixtureRun.command,
+          timeout_ms: 1_000,
+        },
+      }).callApi("task");
+      assert.deepEqual(result, { error: "grok emitted an invalid streaming event" });
+    } finally {
+      fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
+    }
+  });
+}
+
+for (const event of [
+  { type: "tool_call_update", toolCallId: "progress", content: [] },
+  { type: "tool_call_update", toolCallId: "progress", status: null, content: [] },
+  { type: "tool_call", toolCallId: "partial", toolName: "read_file" },
+  { type: "tool_call", toolCallId: "partial", toolName: "read_file", rawInput: null },
+  { type: "tool_call", toolCallId: "partial", toolName: "read_file", rawInput: {} },
+]) {
+  test(`Grok provider ignores partial tool metadata ${JSON.stringify(event)}`, async () => {
+    const fixtureRun = fixture([
+      event,
+      { type: "text", data: "done" },
+      { type: "end", stopReason: "end_turn" },
+    ]);
+    try {
+      const result = await new GrokProvider({
+        config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
+      }).callApi("task");
+      assert.deepEqual(result, { output: "done", metadata: { skillCalls: [] } });
+    } finally {
+      fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
+    }
+  });
+}
