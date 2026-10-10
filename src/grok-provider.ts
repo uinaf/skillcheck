@@ -20,8 +20,8 @@ interface GrokEvent {
   data?: string;
   toolCallId?: string;
   toolName?: string;
-  status?: string;
-  rawInput?: { target_file?: string };
+  status?: string | null;
+  rawInput?: { target_file?: string; path?: string } | null;
   stopReason?: string;
   usage?: {
     input_tokens?: number;
@@ -44,14 +44,20 @@ function isGrokEvent(value: unknown): value is GrokEvent {
   if (!record(value) || typeof value.type !== "string") return false;
   if (value.type === "text") return typeof value.data === "string";
   if (value.type === "tool_call" && value.toolName === "read_file") {
+    if (typeof value.toolCallId !== "string") return false;
+    const input = value.rawInput;
+    if (input === undefined || input === null) return true;
     return (
-      typeof value.toolCallId === "string" &&
-      record(value.rawInput) &&
-      typeof value.rawInput.target_file === "string"
+      record(input) &&
+      (input.target_file === undefined || typeof input.target_file === "string") &&
+      (input.path === undefined || typeof input.path === "string")
     );
   }
   if (value.type === "tool_call_update") {
-    return typeof value.toolCallId === "string" && typeof value.status === "string";
+    return (
+      typeof value.toolCallId === "string" &&
+      (value.status === undefined || value.status === null || typeof value.status === "string")
+    );
   }
   if (value.type !== "end") return true;
   if (typeof value.stopReason !== "string") return false;
@@ -167,7 +173,7 @@ export default class GrokProvider {
           output += event.data;
           if (output.length > OUTPUT_CAP) stop("grok output exceeded limit");
         } else if (event.type === "tool_call" && event.toolName === "read_file") {
-          const target = event.rawInput?.target_file;
+          const target = event.rawInput?.target_file ?? event.rawInput?.path;
           if (event.toolCallId && typeof target === "string") {
             const resolved = path.resolve(workdir, target);
             if (within(workdir, resolved)) reads.set(event.toolCallId, resolved);
