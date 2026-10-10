@@ -377,7 +377,14 @@ export function materialize(
       const from = fs.realpathSync(path.join(skillsRoot, name));
       fs.cpSync(from, path.join(workdir, root, "skills", name), {
         recursive: true,
-        filter: (src) => src !== path.join(from, "evals"),
+        filter: (src) => {
+          if (src === path.join(from, "evals")) return false;
+          // cpSync preserves links back to source files, bypassing eval exclusion
+          // and allowing writes through the installed copy to change the source.
+          if (fs.lstatSync(src).isSymbolicLink())
+            throw new Error(`skill contains a symbolic link: ${src}`);
+          return true;
+        },
       });
     }
   }
