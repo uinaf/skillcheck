@@ -15,6 +15,8 @@ ignoredOptionalDependencies:
   # promptfoo optional JKS path; node-forge has no patched release for GHSA-86w9-cpqp-85rv yet.
   - jks-js
 overrides:
+  # Local-model inference is unused; its ONNX chain carries GHSA-hp3w-g68c-fv3c.
+  "promptfoo>@huggingface/transformers": "-"
   "fast-uri@<3.1.8": "^3.1.8" # GHSA-hrr3-gc8f-f4qj
   "ip-address@<10.7.1": "^10.7.1" # GHSA-j6r3-76f7-8jcv, GHSA-h3mg-xc3c-68pw
   "qs@<6.16.0": "^6.16.0" # GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g
