@@ -48,7 +48,7 @@ the registry.
 Sweeps need model credentials, so they stay off consumer CI and run from an
 operator machine or a job that already holds gateway auth. They also need the
 eval engine, which is an optional peer precisely so the lint-only install
-above stays small. For pnpm eval installs, add this override to the operator project's
+above stays small. For pnpm 12 eval installs, add this override to the operator project's
 `pnpm-workspace.yaml` before installing:
 
 ```yaml
