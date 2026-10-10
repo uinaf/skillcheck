@@ -20,6 +20,8 @@ import {
 import {
   generateRun,
   linkedSiblings,
+  loadScenario,
+  materialize,
   resolvePackageDir,
   type RunOptions,
 } from "../src/scenario.ts";
@@ -1423,3 +1425,41 @@ test("classifyResult: a failed judge call errors the trial instead of scoring it
     trials: [{ score: 0, pass: false, skillUsed: true }],
   });
 });
+
+for (const harness of ["claude", "codex", "grok"] as const) {
+  for (const target of ["eval-file", "eval-directory", "skill-file"] as const) {
+    test(`materialize: ${harness} refuses a symlink to ${target}`, () => {
+      const dir = tmp("skill-symlink");
+      try {
+        const skillDir = path.join(dir, "skills", "demo");
+        fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
+          recursive: true,
+        });
+        const skillFile = path.join(skillDir, "SKILL.md");
+        const original = fs.readFileSync(skillFile, "utf8");
+        let link: string;
+        if (target === "skill-file") {
+          const source = path.join(dir, "source.md");
+          fs.writeFileSync(
+            source,
+            original.replace("---\n", "---\ndisable-model-invocation: true\n"),
+          );
+          fs.unlinkSync(skillFile);
+          fs.symlinkSync(source, skillFile);
+          link = skillFile;
+        } else {
+          link = path.join(skillDir, "reference");
+          fs.symlinkSync(target === "eval-file" ? "evals/basic/criteria.json" : "evals", link);
+        }
+        const before = fs.readFileSync(skillFile, "utf8");
+        const scenario = loadScenario(path.join(skillDir, "evals", "basic"));
+        assert.throws(() => materialize(scenario, path.join(dir, "trial"), harness), {
+          message: `skill contains a symbolic link: ${path.join(fs.realpathSync(skillDir), path.basename(link))}`,
+        });
+        assert.equal(fs.readFileSync(skillFile, "utf8"), before);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+}
