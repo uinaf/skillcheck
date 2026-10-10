@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 import GrokProvider from "../src/grok-provider.ts";
 
-function fixture(events: object[] | ((skillFile: string) => object[])): {
+function fixture(events: unknown[] | ((skillFile: string) => unknown[])): {
   dir: string;
   command: string;
   skillFile: string;
@@ -25,6 +25,8 @@ function fixture(events: object[] | ((skillFile: string) => object[])): {
 
 test("Grok provider reports a completed native skill read", async () => {
   const fixtureRun = fixture((skillFile) => [
+    { type: "session", data: { id: "session-1" } },
+    { type: "tool_call", toolName: "other_tool", rawInput: "unused payload" },
     {
       type: "tool_call",
       toolCallId: "read-1",
@@ -167,3 +169,29 @@ for (const stdio of ["ignore", "inherit"] as const)
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
     }
   });
+
+for (const event of [
+  null,
+  [],
+  "text",
+  { type: "text", data: 42 },
+  { type: "end", stopReason: "end_turn", usage: { total_tokens: "120" } },
+  { type: "end", stopReason: "end_turn", total_cost_usd: -1 },
+]) {
+  test(`Grok provider rejects malformed event ${JSON.stringify(event)}`, async () => {
+    const fixtureRun = fixture([event, { type: "end", stopReason: "end_turn" }]);
+    try {
+      const result = await new GrokProvider({
+        config: {
+          working_dir: fixtureRun.dir,
+          skill: "signal",
+          command: fixtureRun.command,
+          timeout_ms: 1_000,
+        },
+      }).callApi("task");
+      assert.deepEqual(result, { error: "grok emitted an invalid streaming event" });
+    } finally {
+      fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
+    }
+  });
+}
