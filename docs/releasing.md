@@ -17,11 +17,13 @@ The file name `release.yml` is load-bearing. See below.
 
 ## npm
 
-`@uinaf/skillcheck` publishes from `.github/workflows/release.yml` via npm
-Trusted Publishing (OIDC) and the `uinaf-ci` GitHub App. There is no npm
-token in this repository, in its environments, or in the organization.
+`@uinaf/skillcheck` publishes from `.github/workflows/release.yml`, which
+calls the shared `release-npm` workflow in `uinaf/.github`, via npm Trusted
+Publishing (OIDC) and the `uinaf-ci` GitHub App. No npm token exists in this
+repository, its environments, or the organization.
 
-Required on the `release` GitHub Environment:
+Required on the `release` GitHub Environment, which the shared job binds, so
+GitHub substitutes these values for the names in `release.yml`:
 
 | Name                       | Kind   | Purpose                                     |
 | -------------------------- | ------ | ------------------------------------------- |
@@ -38,7 +40,6 @@ Deleting the `release` environment deletes both rows above with it, and there is
 no repo-level fallback: `create-github-app-token` then runs with empty inputs
 and the job fails at that step. The private key cannot be read back from
 GitHub; recreating it means generating a new one in the App settings.
-The App private key lives on the `release` Environment; the shared release-npm job binds that Environment, so GitHub substitutes the Environment value for the secret named in `release.yml`.
 
 ## Version history
 
@@ -52,8 +53,9 @@ version and `scripts/release-commit.ts` commits it through GitHub's signed
 branch head are the verified workflow event SHA. GitHub atomically rejects the
 write if `main` has advanced; a successful response is fetched by its immutable
 commit SHA. The plugin checks its parent, unchanged source, and exact prepared
-manifest before semantic-release tags it. Only the package version may change. The `[skip ci]` marker on that commit is what stops a release
-from releasing itself.
+manifest before semantic-release tags it. Only the package version may
+change. The `[skip ci]` marker on that commit stops a release from releasing
+itself.
 
 If GitHub accepts the commit but fetching or validating it fails, preparation
 stops before tagging or publishing. Inspect that commit's parent, tree, version

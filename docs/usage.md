@@ -209,10 +209,8 @@ run configuration: agent model, agent effort, judge model, judge effort, and
 trial count. A result from another configuration is rerun and reported as
 `RERUN`.
 
-One known failure mode: judge calls through a gateway can drop at the transport
-layer ([uinaf/zebroid-infra#44](https://github.com/uinaf/zebroid-infra/issues/44)).
-That surfaces as an ERROR with no usable result, not as a graded FAIL, and the
-mitigation is a rerun. `sweep` without `--all` resumes, so a rerun picks up
+Judge calls through a gateway can drop at the transport layer. That surfaces
+as an ERROR with no usable result, not as a graded FAIL; rerun it. `sweep` without `--all` resumes, so a rerun picks up
 missing or ungraded results.
 
 ## Summarize
