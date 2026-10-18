@@ -40,10 +40,10 @@ See [usage](docs/usage.md) for how that auth is resolved.
 Conventional Commits; the subject line is what picks the next version. `feat`
 is a minor, `fix` is a patch, a `!` or `BREAKING CHANGE:` footer is a major.
 
-Fill in the pull request template. `Verification` should carry the commands you
-actually ran and their result, not an intention.
+Fill in the pull request template; `Verification` lists the commands you ran
+and their result.
 
 ## Releasing
 
-See [Releasing](docs/releasing.md). Publishing happens from `main` through the
-`release` environment; there is no manual publish in the normal path.
+See [Releasing](docs/releasing.md). Every push to `main` publishes through the
+`release` environment.

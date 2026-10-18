@@ -4,51 +4,39 @@
 
 ## Invariants
 
-- The layout contract under a root is frozen, not configurable: `<root>/skills/<skill>/SKILL.md`, `<root>/skills/<skill>/evals/<scenario>/`, state in `<root>/.skillcheck/`. Every subcommand resolves exactly one root (`--root`, else the cwd). Adding a config file is how this stops being a contract.
-- The lint half has no dependencies, no network, and no model auth. That is the half consumer CI runs, and it is why `skillcheck lint` works in a repo that installed with `--ignore-scripts`. Anything that gives `lint` a dependency breaks its whole reason to exist.
-- The package declares zero regular `dependencies`. The eval engine (`promptfoo`) and provider
-  SDKs are optional `peerDependencies`, plus devDependencies here. promptfoo brings about 670
-  packages, including Playwright, SWC, ONNX Runtime, and Sharp. A lint-only consumer must never
-  install them. `run` and `sweep` preflight the peers required by the selected harness and judge,
-  then exit 2 with the exact install command when one is missing. promptfoo runs from its resolved
-  install path. Never use `npx`, which would fetch an unpinned copy from the registry.
-- `dist/transform.js` must sit beside `dist/cli.js`. `cli.ts` hands promptfoo a `file://` URL built as `path.join(here, "transform" + selfExt)`, so the transform is loaded by path, not imported. That is why the transform has an explicit `pack.entry` and `unbundle` is on; the emitted tree stays 1:1 with `src/`.
-- `dist/skill-evidence.js` is the `skill-used` assertion, also loaded by file URL; keep its explicit pack entry. Evidence is a reported skill call, a completed read of the installed `SKILL.md` inside the workdir, or a successful shell command whose output carries the installed `SKILL.md`'s opening text.
-- Scratch workdirs live in the system temp dir, never under the root: inside the consumer repo the agent could read the skill's source, its evals, and the repo's own agent guidance.
-- `dist/grok-provider.js` is also loaded by file URL; keep its explicit pack entry. Grok `skill-used` evidence is a completed native `read_file` call for the installed `.grok/skills/<skill>/SKILL.md`, not a mention in chat output.
-- `pack.fixedExtension` is `false` on purpose. The package is `type: module`, so `.js` is already ESM; the default would emit `.mjs` and quietly move the `bin` target out from under the tests and the tarball.
-- `dist/` is generated and untracked, and `bin` points into it. So the Vite+ graph runs `pack` before both test lanes (otherwise the "invoked through a symlink, `dist/cli.js` still runs" test finds no file and passes without proving anything), and `prepublishOnly` forces the full graph, so nothing publishes an empty `dist/`.
-- `test/fixtures/` is lint input, not source. One tree is deliberately broken. It is excluded from Vitest collection, Oxlint, and Oxfmt; formatting a fixture would change what the lint is asserted to reject.
-- Tags `v0.1.0`–`v0.1.3` are the legacy `github:uinaf/skillcheck#<tag>` install path and must never be deleted or moved. Consumers still pin them, and semantic-release continues its version history from `v0.1.3`.
-- `.github/workflows/release.yml` cannot be renamed or moved, and the `release` environment cannot be renamed. Trusted Publishing on npm binds this package's OIDC identity to that exact file path plus that environment name.
+- The layout under a root is a fixed contract with no config file: `<root>/skills/<skill>/SKILL.md`, `<root>/skills/<skill>/evals/<scenario>/`, state in `<root>/.skillcheck/`. Every subcommand resolves one root: `--root`, else the cwd.
+- `lint` has no dependencies, no network, and no model auth. Consumer CI runs it, including installs with `--ignore-scripts`.
+- The package has zero regular `dependencies`. promptfoo (about 670 packages, including Playwright, ONNX Runtime, and Sharp) and the provider SDKs are optional `peerDependencies`, so a lint-only consumer stays small. `run` and `sweep` preflight the peers they need and exit 2 with the install command when one is missing. promptfoo runs from its resolved install path; `npx` would fetch an unpinned copy.
+- `dist/transform.js`, `dist/grok-provider.js`, and `dist/skill-evidence.js` are loaded by `file://` URL from beside `dist/cli.js` (`src/cli.ts`, `selfExt`). That is why each has its own `pack.entry` in `vite.config.ts` and `unbundle` is on: `dist/` mirrors `src/`.
+- `skill-used` evidence is a reported skill call, a completed read of the installed `SKILL.md` inside the workdir, or a successful shell command whose output carries that file's opening text. On Grok it is a completed native `read_file` of `.grok/skills/<skill>/SKILL.md`.
+- Scratch workdirs live in the system temp dir, outside the root, so the agent cannot read the skill's source, its evals, or the repo's agent guidance.
+- `pack.fixedExtension` is `false`: the package is `type: module`, and the default `.mjs` output would move the `bin` target.
+- `dist/` is generated and untracked. The Vite+ graph runs `pack` before both test lanes, so the symlinked-`bin` test has a file to run, and `prepublishOnly` forces the full graph.
+- `test/fixtures/` is lint input, and one tree is deliberately broken. Vitest, Oxlint, and Oxfmt all skip it; formatting it would change what lint is asserted to reject.
+- Tags `v0.1.0`–`v0.1.3` are the legacy `github:uinaf/skillcheck#<tag>` install path. Consumers still pin them and semantic-release continues from `v0.1.3`, so they stay where they are.
+- npm Trusted Publishing binds this package to the path `.github/workflows/release.yml` and the `release` environment name. Renaming either breaks publishing.
 
 ## Commands
 
 ```sh
-pnpm install --frozen-lockfile   # bootstrap: Node from .node-version, pnpm from packageManager
-pnpm run verify                  # cached affected Vite+ graph
-pnpm run verify:full             # uncached gate CI and publishing run
+pnpm install --frozen-lockfile   # Node from .node-version, pnpm from packageManager
+pnpm run verify                  # cached Vite+ graph
+pnpm run verify:full             # uncached; what CI and publishing run
 ```
 
-Prefer `vp` directly while iterating: `pnpm exec vp check`, `pnpm exec vp test run`, `pnpm exec vp pack`.
+While iterating: `pnpm exec vp check` (format, lint, types; `--fix` applies autofixes), `pnpm exec vp test run`, `pnpm exec vp pack`. The pre-commit hook runs `vp check --fix` on staged files.
 
-`vp check` is format + lint + type check in one pass; `vp check --fix` applies both autofixers. The pre-commit hook runs it on staged files (`.vite-hooks/pre-commit`, staged policy in `vite.config.ts`).
-
-`run`, `sweep`, and `summarize` need model auth and are operator-run; they are not part of `verify` and never run in CI.
+`run`, `sweep`, and `summarize` need model auth. Operators run them by hand; they are outside `verify` and CI.
 
 ## Pipelines
 
-| Workflow                        | Trigger                       | Jobs                                          |
-| ------------------------------- | ----------------------------- | --------------------------------------------- |
-| `.github/workflows/verify.yml`  | PR, `workflow_call`, dispatch | `verify`; the one definition, called by below |
-| `.github/workflows/release.yml` | Push to `main`                | verify → npm publish (`release` environment)  |
+`.github/workflows/verify.yml` is the one gate, run on pull requests and called by `.github/workflows/release.yml` on every push to `main`, which then publishes to npm. Its last step is the push-time scan. `[skip ci]` on `verify` skips the release too, so the version writeback commit does not release again. Release runs queue (`queue: max`) so every pushed range is scanned; the `verify-` concurrency prefix keeps the called run out of the caller's `main-` group.
 
-`release` waits on `verify`, which ends with the push-time scan. `[skip ci]` is declared once on `verify`, and a skipped dependency skips its dependents, so the release's own version writeback does not trigger another release.
-`verify.yml` groups pull-request runs by ref and gives every other run its own group, and `release.yml` queues every push with `queue: max`, so no pushed range goes unscanned. Called from `release.yml`, `github.workflow` resolves to the caller, and the `verify-` prefix keeps the called group apart from the caller's `main-` group. `pnpm-workspace.yaml` denies the browser, ONNX, and image-processing build scripts that the optional promptfoo peer pulls in: scenarios grade text with a remote judge and never take that path.
+`pnpm-workspace.yaml` denies the browser, ONNX, and image build scripts promptfoo pulls in; scenarios grade text with a remote judge.
 
-`test/consumer.test.ts` packs the tarball, installs it without scripts or eval peers, and runs `skillcheck lint` from `node_modules/.bin`. The same `verify` graph proves both source and artifact locally; CI forces that graph without cache.
+`test/consumer.test.ts` packs the tarball, installs it without scripts or eval peers, and runs `skillcheck lint` from `node_modules/.bin`.
 
-Credentials are in [docs/releasing.md](docs/releasing.md).
+Credentials: [docs/releasing.md](docs/releasing.md).
 
 ## Docs map
 

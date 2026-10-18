@@ -9,9 +9,9 @@ verify ──> release   npm publish, OIDC + uinaf-ci  (release environment)
 ```
 
 `verify` is the one gate, called from `verify.yml`; its last step runs the
-shared push-time scan from `uinaf/.github` over the pushed range. Keep it that
-way: a second copy of the gate on a push-to-`main` workflow races this one over
-the same commit.
+shared push-time scan from `uinaf/.github` over the pushed range. A second copy
+of the gate on another push-to-`main` workflow would race this one over the same
+commit.
 
 The file name `release.yml` is load-bearing. See below.
 
@@ -75,16 +75,8 @@ pnpm dlx semantic-release --dry-run --no-ci
 which builds it, so the tarball is always packed from a tree that just passed
 the gate. `files` is `dist`, `docs`, `README.md`, `LICENSE`.
 
-Manual publish is emergency recovery only:
+Manual publish is emergency recovery only: `npm publish --access public`, which
+runs the full gate through `prepublishOnly`.
 
-```sh
-pnpm run verify
-npm publish --access public
-```
-
-## The old install path
-
-Before `@uinaf/skillcheck` existed, consumers installed
-`github:uinaf/skillcheck#v0.1.3`. Those tags still resolve and still carry a
-committed `dist/`, so anything pinned to them keeps working untouched. New
-consumers use npm.
+Consumers pinned to the legacy git tags are covered in
+[adoption](adoption.md#the-older-install-path).
