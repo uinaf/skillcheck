@@ -748,6 +748,7 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
       assert.equal(runCli(["summarize", "--root", root]).rc, 0);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(stateDirs(root).scratch, { recursive: true, force: true });
     }
   });
 }

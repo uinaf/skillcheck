@@ -387,6 +387,7 @@ test(
   { timeout: 60_000 },
   () => {
     const dir = tmp("effort-spawn");
+    const plainDir = tmp("effort-default");
     try {
       const { calls, config, result } = spawnedAgents(dir, { trials: 2, agentEffort: "low" });
       assert.equal(calls.length, 2);
@@ -404,11 +405,12 @@ test(
         /^trial \d: .*Claude Code process exited/,
       );
 
-      const plain = spawnedAgents(tmp("effort-default"), {});
+      const plain = spawnedAgents(plainDir, {});
       assert.equal(plain.calls.length, 1);
       assert.equal(plain.calls[0].argv.includes("--effort"), false);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(plainDir, { recursive: true, force: true });
     }
   },
 );
@@ -551,6 +553,7 @@ syncBuiltinESMExports();
     assert.equal(meta.aggregate.pass, true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(stateDirs(root).scratch, { recursive: true, force: true });
   }
 });
 
