@@ -391,7 +391,12 @@ test(
     try {
       const { calls, config, result } = spawnedAgents(dir, { trials: 2, agentEffort: "low" });
       assert.equal(calls.length, 2);
-      for (const { argv } of calls) assert.equal(argv[argv.indexOf("--effort") + 1], "low");
+      for (const { argv } of calls) {
+        const effort =
+          argv.find((arg) => arg.startsWith("--effort="))?.slice("--effort=".length) ??
+          (argv.includes("--effort") ? argv[argv.indexOf("--effort") + 1] : undefined);
+        assert.equal(effort, "low");
+      }
       assert.deepEqual(
         calls.map((c) => fs.realpathSync(c.cwd)).sort(),
         config.providers.map((p: { config: { working_dir: string } }) =>
@@ -407,7 +412,10 @@ test(
 
       const plain = spawnedAgents(plainDir, {});
       assert.equal(plain.calls.length, 1);
-      assert.equal(plain.calls[0].argv.includes("--effort"), false);
+      assert.equal(
+        plain.calls[0].argv.some((arg) => arg === "--effort" || arg.startsWith("--effort=")),
+        false,
+      );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
       fs.rmSync(plainDir, { recursive: true, force: true });
