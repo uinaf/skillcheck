@@ -20,10 +20,6 @@ and the docs map.
   Each needs its own `pack.entry` in `vite.config.ts`, with `unbundle` on.
 - `pack.fixedExtension` stays `false`: the default `.mjs` output would move the
   `bin` target.
-- `skill-used` evidence is a reported skill call, a completed read of the
-  installed `SKILL.md` inside the workdir, or a successful shell command whose
-  output carries that file's opening text. On Grok it is a completed native
-  `read_file` of `.grok/skills/<skill>/SKILL.md`.
 - Scratch workdirs stay in the system temp dir, outside the root, so the agent
   cannot read the skill's source, its evals, or the repo's agent guidance.
 - `test/fixtures/` is lint input, and one tree is deliberately broken. Keep

@@ -61,9 +61,3 @@ results:
 ```gitignore
 .skillcheck/results/
 ```
-
-## Legacy git tags
-
-Tags `v0.1.0`–`v0.1.3` (`npm i -D github:uinaf/skillcheck#v0.1.3`) carry a
-committed `dist/` and still work. Tags from `v0.1.4` on carry no `dist/`, so a
-git spec pointing at one will not run. Move to the registry install.
