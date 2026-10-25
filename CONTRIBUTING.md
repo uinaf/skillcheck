@@ -45,5 +45,18 @@ and their result.
 
 ## Releasing
 
-See [Releasing](docs/releasing.md). Every push to `main` publishes through the
-`release` environment.
+Every push to `main` publishes to npm through `.github/workflows/release.yml`
+and the `release` environment.
+
+- Keep the `release.yml` path and the `release` environment name: npm Trusted
+  Publishing is bound to both. The environment holds `UINAF_CI_APP_CLIENT_ID`
+  and `UINAF_CI_APP_PRIVATE_KEY`; deleting it deletes them.
+- Never move or delete a tag; `v0.1.0`–`v0.1.3` are legacy install pins.
+- If a release fails after GitHub accepts its version commit, finish only the
+  missing publication steps from that commit; never cut another version.
+
+Check the next version without publishing:
+
+```sh
+pnpm dlx semantic-release --dry-run --no-ci
+```
