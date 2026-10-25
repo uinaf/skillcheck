@@ -36,16 +36,15 @@ While iterating: `pnpm exec vp check` (format, lint, types; `--fix` applies auto
 
 `test/consumer.test.ts` packs the tarball, installs it without scripts or eval peers, and runs `skillcheck lint` from `node_modules/.bin`.
 
-Credentials: [docs/releasing.md](docs/releasing.md).
+Credentials: [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
 ## Docs map
 
-| Doc                                    | When                                  |
-| -------------------------------------- | ------------------------------------- |
-| [README.md](README.md)                 | Install and consumer usage            |
-| [docs/usage.md](docs/usage.md)         | Every subcommand and flag             |
-| [docs/scenarios.md](docs/scenarios.md) | Writing an eval scenario              |
-| [docs/authoring.md](docs/authoring.md) | Writing and auditing the skill itself |
-| [docs/adoption.md](docs/adoption.md)   | Adopting the lint in another repo     |
-| [docs/releasing.md](docs/releasing.md) | The npm pipeline and its credentials  |
-| [CONTRIBUTING.md](CONTRIBUTING.md)     | Local setup and the verify gate       |
+| Doc                                                                                            | When                                                                   |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [README.md](README.md)                                                                         | Install and consumer usage                                             |
+| [docs/usage.md](docs/usage.md)                                                                 | Every subcommand and flag                                              |
+| [docs/scenarios.md](docs/scenarios.md)                                                         | Writing an eval scenario                                               |
+| [docs/adoption.md](docs/adoption.md)                                                           | Adopting the lint in another repo                                      |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                                                             | Local setup, the verify gate, and the npm pipeline and its credentials |
+| [Skill quality](https://github.com/uinaf/ffss/blob/main/skills/slopaudit/references/skills.md) | Writing and auditing the skill itself                                  |

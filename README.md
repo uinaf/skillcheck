@@ -53,15 +53,14 @@ CLI it documents.
 
 ## Docs
 
-| Doc                                                             | When                                  |
-| --------------------------------------------------------------- | ------------------------------------- |
-| [Usage](docs/usage.md)                                          | Every subcommand, flag, and auth path |
-| [Scenarios](docs/scenarios.md)                                  | Writing an eval scenario              |
-| [Authoring](docs/authoring.md)                                  | Writing and auditing the skill itself |
-| [Adoption](docs/adoption.md)                                    | Wiring the lint into another repo     |
-| [Releasing](docs/releasing.md)                                  | The npm pipeline                      |
-| [Contributing](CONTRIBUTING.md)                                 | Local setup and the verify gate       |
-| [Security](https://github.com/uinaf/skillcheck/security/policy) | Reporting a vulnerability             |
+| Doc                                                                                            | When                                               |
+| ---------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| [Usage](docs/usage.md)                                                                         | Every subcommand, flag, and auth path              |
+| [Scenarios](docs/scenarios.md)                                                                 | Writing an eval scenario                           |
+| [Adoption](docs/adoption.md)                                                                   | Wiring the lint into another repo                  |
+| [Contributing](CONTRIBUTING.md)                                                                | Local setup, the verify gate, and the npm pipeline |
+| [Skill quality](https://github.com/uinaf/ffss/blob/main/skills/slopaudit/references/skills.md) | Writing and auditing the skill itself              |
+| [Security](https://github.com/uinaf/skillcheck/security/policy)                                | Reporting a vulnerability                          |
 
 ## License
 

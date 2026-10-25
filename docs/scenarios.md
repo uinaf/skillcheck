@@ -153,5 +153,5 @@ not visible.
 Graded output skips agent config roots, `node_modules`, and tool caches
 (`.cache`, `.npm`, `.pnpm-store`), so a cache cannot crowd deliverables out.
 
-Scenario quality is behavioral proof; [authoring](authoring.md) covers the
+Scenario quality is behavioral proof; [skill quality](https://github.com/uinaf/ffss/blob/main/skills/slopaudit/references/skills.md) covers the
 judgment layer lint and evals cannot grade.
