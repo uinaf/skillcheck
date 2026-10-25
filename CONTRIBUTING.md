@@ -8,23 +8,16 @@ Node (see `.node-version`) and [pnpm](https://pnpm.io/installation):
 pnpm install --frozen-lockfile
 ```
 
-The `prepare` script runs `vp config --no-agent` during that install, so the
-commit hook is wired with no second setup step.
+The install also wires the commit hook.
 
 ## Validation
 
 ```sh
-pnpm run verify
-# force every lane:
-pnpm run verify:full
+pnpm run verify        # cached
+pnpm run verify:full   # uncached; what CI and publishing run
 ```
 
-The repository-owned Vite+ graph caches format, lint, pack, source tests, and
-the consumer contract independently. The order matters: `dist/` is generated,
-and the consumer test installs the packed tarball without scripts or eval peers
-before running its CLI. CI and publishing force the same graph without cache.
-
-Narrower loops while iterating:
+While iterating:
 
 ```sh
 pnpm exec vp check --fix
@@ -32,16 +25,14 @@ pnpm exec vp test run
 pnpm exec vp test watch
 ```
 
-`run`, `sweep`, and `summarize` need model auth and are not part of the gate.
-See [usage](docs/usage.md) for how that auth is resolved.
+`run`, `sweep`, and `summarize` need model auth ([usage](docs/usage.md#auth))
+and are not part of the gate.
 
-## Branches and pull requests
+## Pull requests
 
-Conventional Commits; the subject line is what picks the next version. `feat`
-is a minor, `fix` is a patch, a `!` or `BREAKING CHANGE:` footer is a major.
-
-Fill in the pull request template; `Verification` lists the commands you ran
-and their result.
+Use Conventional Commits; the subject picks the next version. `feat` is a
+minor, `fix` a patch, and `!` or a `BREAKING CHANGE:` footer a major. `docs:`
+and `chore:` do not release. Fill in the pull request template.
 
 ## Releasing
 
@@ -51,7 +42,8 @@ and the `release` environment.
 - Keep the `release.yml` path and the `release` environment name: npm Trusted
   Publishing is bound to both. The environment holds `UINAF_CI_APP_CLIENT_ID`
   and `UINAF_CI_APP_PRIVATE_KEY`; deleting it deletes them.
-- Never move or delete a tag; `v0.1.0`–`v0.1.3` are legacy install pins.
+- Never move or delete a tag. Consumers still pin the legacy `v0.1.0`–`v0.1.3`
+  git tags, and semantic-release continues from them.
 - If a release fails after GitHub accepts its version commit, finish only the
   missing publication steps from that commit; never cut another version.
 

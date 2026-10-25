@@ -2,13 +2,9 @@
 
 # uinaf/skillcheck
 
-Lint and eval harness for agent skills. One CLI with two halves: a keyless
-structural lint any repo can run in CI, and a promptfoo-driven eval loop that
-grades what a skill actually makes an agent do.
-
-Built for [uinaf](https://uinaf.dev) skill repos. Nothing in it is
-uinaf-specific. It ships no opinion about what a skill should say, only about
-where skills sit and how a scenario is scored.
+Lint and eval harness for agent skills: a keyless structural lint any repo can
+run in CI, and a promptfoo-driven eval loop that grades what a skill makes an
+agent do.
 
 ## Install
 
@@ -16,12 +12,8 @@ where skills sit and how a scenario is scored.
 pnpm add -D @uinaf/skillcheck
 ```
 
-Node 24 or newer. The package ships compiled ESM, runs no install scripts, and
-has no regular dependencies, so a runner using `--ignore-scripts` is fine and
-the lint-only install stays at a handful of packages. The promptfoo eval engine
-and provider SDKs are optional peers, installed only on the operator machine
-that runs evals ([adoption](docs/adoption.md)). Consumers still pinned to the
-pre-npm git tags are covered there too.
+Node 24 or newer. The lint-only install has no regular dependencies and runs
+no install scripts. Evals need optional peers ([adoption](docs/adoption.md)).
 
 ## Use
 
@@ -32,14 +24,12 @@ skillcheck sweep --trials 3                  # every scenario, three trials each
 skillcheck summarize                         # per-scenario and per-skill scorecard
 ```
 
-`lint` needs nothing. `run` and `sweep` need model auth, which is why sweeps
-stay operator-run and consumer repos never hold credentials. Every command,
-flag, and auth variable is in [usage](docs/usage.md).
+`run` and `sweep` need model auth ([usage](docs/usage.md#auth)).
 
 ## Layout contract
 
-Frozen, not configurable. Every command reads one root: `--root <dir>`, or the
-current directory.
+Fixed, with no config file. Every command reads one root: `--root <dir>`, or
+the current directory.
 
 ```text
 <root>/skills/<skill>/SKILL.md                       linted

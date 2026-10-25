@@ -1,18 +1,13 @@
 # Adopting it in a repo
 
-Two separate decisions: run the lint in CI, and run evals on a machine that has
-model auth. Only the first belongs in a consumer repo.
+Run the lint in the consumer repo's CI. Run evals only on a machine with model
+auth.
 
 ## Lint in CI
 
 ```sh
 pnpm add -D @uinaf/skillcheck
 ```
-
-Runners that install with `--ignore-scripts` are fine: the package ships
-compiled ESM and has no install or postinstall script. Its `prepare` script
-only wires this repository's own commit hook; package managers do not run it
-for a registry install.
 
 ```json
 { "scripts": { "skills:lint": "skillcheck lint" } }
@@ -35,75 +30,40 @@ jobs:
       - run: pnpm run skills:lint
 ```
 
-The job needs no secrets and no network beyond the install. Node 24 is the
-floor. `pnpm/action-setup` installs the pnpm version pinned in the repo's
-`packageManager` field; hosted runners do not ship pnpm.
-
-Run it through the script rather than a bare `npx skillcheck`: the script
-resolves the version the repo pinned, and `npx` would resolve the latest one on
-the registry.
+The job needs no secrets, and `--ignore-scripts` installs work. Run it through
+the script: a bare `npx skillcheck` resolves the latest registry version, not
+the pinned one.
 
 ## Evals
 
-Sweeps need model credentials, so they stay off consumer CI and run from an
-operator machine or a job that already holds gateway auth. They also need the
-eval engine, which is an optional peer precisely so the lint-only install
-above stays small. For pnpm 12 eval installs, add this override to the operator project's
-`pnpm-workspace.yaml` before installing:
+Keep sweeps off consumer CI. For pnpm 12, add this override to the operator
+project's `pnpm-workspace.yaml` before installing; it drops promptfoo's unused
+local-inference path and its unpatched `sprintf-js`
+([GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)):
 
 ```yaml
 overrides:
   "promptfoo>@huggingface/transformers": "-"
 ```
 
-Skillcheck uses remote models; this omits promptfoo's unused
-local-inference path and its unpatched `sprintf-js` dependency
-([GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)).
-The setting belongs to the installing project; installing Skillcheck does not
-inherit this repository's pnpm policy. Then install the peers next to Skillcheck:
+Install the peers next to skillcheck, then sweep and summarize:
 
 ```sh
 pnpm add -D promptfoo @anthropic-ai/claude-agent-sdk @openai/codex-sdk
-```
-
-`run` and `sweep` check for the peers the selected harness needs and exit 2
-with that install command when they are missing, so a lint-only install never
-crashes into a resolution error. Then:
-
-```sh
 skillcheck sweep            # resumes: only scenarios without results
 skillcheck summarize        # writes .skillcheck/scorecards/<UTC-date>.json
 ```
 
-Keep `.skillcheck/scorecards/` as the history, either committed here or in a
-separate evals repository that mounts it as the state directory
-([isolated runs](usage.md#isolated-runs)). Gitignore the rest:
+Keep `.skillcheck/scorecards/`, committed here or in a separate evals
+repository ([isolated runs](usage.md#isolated-runs)), and gitignore the
+results:
 
 ```gitignore
 .skillcheck/results/
 ```
 
-A scorecard is only comparable against the tree it graded and the configuration
-it ran with, which is why every result carries the root repo's HEAD, the agent
-and judge models and efforts, and the trial count, and why `summarize` refuses
-to mix them without `--allow-mixed`. Use `--trials 3` or more before calling a
-skill change better or worse; one trial cannot tell a regression from noise.
+## Legacy git tags
 
-## Upgrading
-
-Bump the version in `package.json` and rerun the sweep. Results carry the
-`tool_version` that produced them, so a scorecard says which harness build it
-came from as well as which skills tree.
-
-## The older install path
-
-Before the package was published, consumers installed it from a git tag:
-
-```sh
-npm i -D github:uinaf/skillcheck#v0.1.3
-```
-
-Those tags are frozen and still work: they carry a committed `dist/`, and npm
-12 consumers needed `allow-git=root` in `.npmrc` to accept the spec at all. The
-registry install needs none of that. Tags from `v0.1.4` on are npm releases and
-carry no `dist/`, so a git spec pointing at one will not run.
+Tags `v0.1.0`–`v0.1.3` (`npm i -D github:uinaf/skillcheck#v0.1.3`) carry a
+committed `dist/` and still work. Tags from `v0.1.4` on carry no `dist/`, so a
+git spec pointing at one will not run. Move to the registry install.
