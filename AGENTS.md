@@ -32,14 +32,7 @@ and the docs map.
 
 ## Commands
 
-```sh
-pnpm install --frozen-lockfile   # Node from .node-version, pnpm from packageManager
-pnpm run verify                  # cached Vite+ graph
-pnpm run verify:full             # uncached; what CI and publishing run
-```
+Setup and validation: [CONTRIBUTING.md](CONTRIBUTING.md). `pnpm exec vp pack`
+builds `dist/` alone.
 
-While iterating: `pnpm exec vp check --fix`, `pnpm exec vp test run`,
-`pnpm exec vp pack`.
-
-`run`, `sweep`, and `summarize` need model auth. Operators run them by hand;
-they are outside `verify` and CI.
+`run`, `sweep`, and `summarize` spend model auth. Operators run them by hand.
