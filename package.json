@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.281",
-    "@openai/codex-sdk": "^0.164.0",
+    "@openai/codex-sdk": "^0.165.0",
     "@types/node": "^26.6.2",
     "promptfoo": "^0.125.0",
     "vite": "catalog:",
@@ -42,7 +42,7 @@
   },
   "peerDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.281",
-    "@openai/codex-sdk": "^0.156.1 || ^0.157.0 || ^0.160.0 || ^0.161.0 || ^0.163.0 || ^0.164.0",
+    "@openai/codex-sdk": "^0.156.1 || ^0.157.0 || ^0.160.0 || ^0.161.0 || ^0.163.0 || ^0.164.0 || ^0.165.0",
     "promptfoo": "^0.123.1 || ^0.124.0 || ^0.125.0"
   },
   "peerDependenciesMeta": {
@@ -66,5 +66,5 @@
   "engines": {
     "node": ">=24"
   },
-  "packageManager": "pnpm@12.16.0"
+  "packageManager": "pnpm@12.16.1"
 }
