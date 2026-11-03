@@ -26,6 +26,7 @@ overrides:
   "adm-zip@<0.6.1": "^0.6.1" # GHSA-xcpc-8h2w-3j85, GHSA-vwc7-r8mq-g2x9
   "sharp@<0.35.4": "^0.35.4" # GHSA-f88m-g3jw-g9cj, GHSA-rgj7-g3m4-5g8c
   "axios@<1.20.0": "^1.20.0" # GHSA-c29m-xwm3-cm6r, GHSA-mghh-pgcx-3jjj
+  "follow-redirects@<1.16.2": "^1.16.2" # GHSA-mrwp-f3q8-3g9p
   "basic-ftp@<6.2.1": "^6.2.1" # GHSA-c475-qrg2-pj4r
   "zod@<4.6.6": "^4.6.6" # GHSA-mrhx-c7xc-m3w5
   "body-parser@>=2.0.0 <2.4.0": "^2.4.0" # GHSA-27r3-jxmh-p828
