@@ -32,6 +32,7 @@ overrides:
   "body-parser@>=2.0.0 <2.4.0": "^2.4.0" # GHSA-27r3-jxmh-p828
   # @azure/identity still allows 5.x and 6.x, which have no patch.
   "@azure/msal-node@<7.1.0": "^7.1.0" # GHSA-xcx6-jx8p-x3h5
+  "mongoose@>=9.0.0 <9.11.4": "^9.11.4" # GHSA-gg4r-jv3p-qx3c, GHSA-8332-j7wj-wjw4
   "undici@>=6.23.0 <6.29.1": "^6.29.1" # GHSA-xjj6-f33q-929c
   "undici@>=7.18.0 <7.30.1": "^7.30.1" # GHSA-xjj6-f33q-929c
   "undici@>=8.0.0 <8.12.2": "^8.12.2" # GHSA-xjj6-f33q-929c
