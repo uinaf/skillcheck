@@ -15,9 +15,9 @@ and the docs map.
   and `sweep` preflight the peers they need and exit 2 with the install
   command. promptfoo runs from its resolved install path; `npx` would fetch an
   unpinned copy.
-- `dist/transform.js`, `dist/grok-provider.js`, and `dist/skill-evidence.js`
-  load by `file://` URL from beside `dist/cli.js` (`selfExt` in `src/cli.ts`).
-  Each needs its own `pack.entry` in `vite.config.ts`, with `unbundle` on.
+- Modules that `dist/cli.js` loads by `file://` URL from beside itself
+  (`selfExt` in `src/cli.ts`) each need their own `pack.entry` in
+  `vite.config.ts`, with `unbundle` on.
 - `pack.fixedExtension` stays `false`: the default `.mjs` output would move the
   `bin` target.
 - Scratch workdirs stay in the system temp dir, outside the root, so the agent
