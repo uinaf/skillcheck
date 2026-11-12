@@ -13,24 +13,9 @@ pnpm add -D @uinaf/skillcheck
 { "scripts": { "skills:lint": "skillcheck lint" } }
 ```
 
-```yaml
-jobs:
-  skills:
-    name: skills lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: "24"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run skills:lint
-```
-
-The job needs no secrets, and `--ignore-scripts` installs work. Run it through
+Add a CI job that checks out, sets up pnpm and the
+[supported Node](../README.md#install), installs with `--frozen-lockfile`, and
+runs `pnpm run skills:lint`. The job needs no secrets, and `--ignore-scripts` installs work. Run it through
 the script: a bare `npx skillcheck` resolves the latest registry version, not
 the pinned one.
 

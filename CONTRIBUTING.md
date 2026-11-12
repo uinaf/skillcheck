@@ -30,9 +30,9 @@ and are not part of the gate.
 
 ## Pull requests
 
-Use Conventional Commits; the subject picks the next version. `feat` is a
-minor, `fix` a patch, and `!` or a `BREAKING CHANGE:` footer a major. `docs:`
-and `chore:` do not release. Fill in the pull request template.
+Use Conventional Commits; the subject picks the next version through
+semantic-release's commit analyzer ([`.releaserc.json`](.releaserc.json)).
+Fill in the pull request template.
 
 ## Releasing
 
@@ -42,8 +42,8 @@ and the `release` environment.
 - Keep the `release.yml` path and the `release` environment name: npm Trusted
   Publishing is bound to both. The environment holds `UINAF_CI_APP_CLIENT_ID`
   and `UINAF_CI_APP_PRIVATE_KEY`; deleting it deletes them.
-- Never move or delete a tag. Consumers still pin the legacy `v0.1.0`–`v0.1.3`
-  git tags, and semantic-release continues from them.
+- Never move or delete a tag. Consumers still pin legacy git tags, and
+  semantic-release continues from them.
 - If a release fails after GitHub accepts its version commit, finish only the
   missing publication steps from that commit; never cut another version.
 
