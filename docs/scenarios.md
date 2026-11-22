@@ -29,8 +29,8 @@ The prompt then says "Input file `config.json` is available in your working
 directory." Destinations must stay under the workdir, must not collide, and
 must not target `.claude/`, `.agents/`, `.grok/`, or `node_modules/`.
 
-Write the task the way a user would. Do not name the skill, describe its
-steps, or hint at the checklist: routing is part of what is measured.
+Write the task the way a user would, without the skill's name, its steps, or
+the checklist: routing is part of what is measured.
 `skillcheck lint` rejects a task that names any skill in the root.
 
 The agent runs online with a shell and web access. On a host run it has the
@@ -61,7 +61,7 @@ assert-set with threshold 0.7. A separate `skill-used` assertion must also
 pass, so good output without loading the skill still fails.
 
 Write descriptions a judge can check against the deliverable: an observable
-property, not a feeling. Weight the items that would make a reviewer reject the
+property. Weight the items that would make a reviewer reject the
 work. Name a specific tool or version only when the skill teaches it;
 otherwise grade the property the tool provides.
 
@@ -104,8 +104,8 @@ fixtures small enough that the deliverable fits.
 
 A skill with `disable-model-invocation: true` is invoke-only. The eval copy has
 the flag stripped, and the task gains a leading
-`Use the <skill> skill for this task.` The eval measures behavior when
-invoked, not routing.
+`Use the <skill> skill for this task.` The eval then measures behavior when
+invoked.
 
 ## The workdir
 

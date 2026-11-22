@@ -41,8 +41,7 @@ Materializes the scenario into a temp workdir per trial
 ([workdir](scenarios.md#the-workdir)), installs the skill, drives the agent,
 and grades the files it wrote. Exit 0 means pass, 1 graded fail, 2 error. A
 missing eval peer exits 2 with the exact `pnpm add` command. An errored test
-was never graded: it exits 2, prints the provider's message, and is never
-reported as a failing score.
+is ungraded: it exits 2 and prints the provider's message.
 
 - `--harness` defaults to `claude`. On `codex` and `grok`, omitting `--agent`
   uses that CLI's default model.
