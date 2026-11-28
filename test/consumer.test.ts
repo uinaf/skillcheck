@@ -56,11 +56,12 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
     );
     // promptfoo loads these by file URL beside cli.js, so a pack that drops
     // one still lints but breaks every eval.
-    for (const entry of ["transform.js", "skill-evidence.js"])
+    for (const entry of ["transform.js", "skill-evidence.js"]) {
       assert.ok(
         fs.existsSync(path.join(consumer, "node_modules/@uinaf/skillcheck/dist", entry)),
         `packed dist is missing ${entry}`,
       );
+    }
     const grokProviderPath = path.join(
       consumer,
       "node_modules/@uinaf/skillcheck/dist/grok-provider.js",

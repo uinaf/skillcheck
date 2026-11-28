@@ -474,8 +474,9 @@ test("reduceResults: empty directory", () => {
 
 test("parsePositiveInt validates values", () => {
   assert.equal(parsePositiveInt("--max-turns", "80"), 80);
-  for (const raw of ["abc", "-3", "0", "Infinity", "2.5"])
+  for (const raw of ["abc", "-3", "0", "Infinity", "2.5"]) {
     assert.throws(() => parsePositiveInt("--trials", raw), /--trials must be a positive integer/);
+  }
 });
 
 test("run and sweep reject --max-turns for harnesses without a turn limit", () => {
@@ -483,7 +484,9 @@ test("run and sweep reject --max-turns for harnesses without a turn limit", () =
   try {
     for (const command of ["run", "sweep"]) {
       const args = [command];
-      if (command === "run") args.push("missing-scenario");
+      if (command === "run") {
+        args.push("missing-scenario");
+      }
       const result = runCli([...args, "--root", root, "--harness", "codex", "--max-turns", "2"]);
       assert.equal(result.rc, 1, result.stderr);
       assert.match(result.stderr, /--max-turns is only supported with --harness claude/);
@@ -646,7 +649,9 @@ function seedScorecards(dir: string, original: string): string[] {
   const paths = [now, now + 86_400_000].map((time) =>
     path.join(dir, `${new Date(time).toISOString().slice(0, 10)}.json`),
   );
-  for (const out of paths) fs.writeFileSync(out, original);
+  for (const out of paths) {
+    fs.writeFileSync(out, original);
+  }
   return paths;
 }
 
@@ -726,11 +731,15 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
       assert.equal(failed.status, 2, failed.stderr);
       assert.match(failed.stderr, /ERROR demo--basic.attempt/);
       assert.equal(fs.existsSync(meta), false);
-      if (mode === "error-json-legacy") fs.rmSync(`${resultPath}.attempt`);
+      if (mode === "error-json-legacy") {
+        fs.rmSync(`${resultPath}.attempt`);
+      }
       const summary = runCli(["summarize", "--root", root]);
       assert.equal(summary.rc, 1, summary.stdout);
       assert.match(summary.stderr, /skipped rerun/);
-      for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+      for (const out of paths) {
+        assert.equal(fs.readFileSync(out, "utf8"), original);
+      }
       if (mode === "empty" || mode === "nonzero-empty" || mode.startsWith("error-json")) {
         assert.equal(fs.existsSync(resultPath), mode.startsWith("error-json"));
         const retry = invoke(["sweep"]);
@@ -779,7 +788,9 @@ for (const harness of ["claude", "codex", "grok"] as const) {
       const result = runCli(["summarize", "--root", root, "--allow-mixed"]);
       assert.equal(result.rc, 1);
       assert.match(result.stderr, /skipped rerun.*refusing to carry/);
-      for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+      for (const out of paths) {
+        assert.equal(fs.readFileSync(out, "utf8"), original);
+      }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -800,7 +811,9 @@ for (const mode of ["reject", "override", "replace"] as const) {
       const paths = seedScorecards(dirs.scorecards, original);
       fs.writeFileSync(path.join(dirs.results, "unrelated--malformed.json"), "not JSON");
       writeResult(dirs.results, "a--one", 0.95, true, "new");
-      if (mode === "replace") writeResult(dirs.results, "b--two", 0.8, true, "new");
+      if (mode === "replace") {
+        writeResult(dirs.results, "b--two", 0.8, true, "new");
+      }
       const result = runCli([
         "summarize",
         "--root",
@@ -810,7 +823,9 @@ for (const mode of ["reject", "override", "replace"] as const) {
       if (mode === "reject") {
         assert.equal(result.rc, 1);
         assert.match(result.stderr, /multiple skills-tree revisions.*--allow-mixed/);
-        for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+        for (const out of paths) {
+          assert.equal(fs.readFileSync(out, "utf8"), original);
+        }
       } else {
         assert.equal(result.rc, 0, result.stderr);
         const out = paths.find((file) => fs.readFileSync(file, "utf8") !== original);
@@ -1031,7 +1046,9 @@ test("lint: broken fixture tree fails with each finding named", () => {
   // Every finding is named relative to the linted root, not by absolute path.
   const findings = r.stderr.trim().split("\n").slice(0, -1);
   assert.equal(findings.length, 6);
-  for (const line of findings) assert.match(line, /^skills\/wrongname\/\S+: \S/);
+  for (const line of findings) {
+    assert.match(line, /^skills\/wrongname\/\S+: \S/);
+  }
 });
 
 test("lint: a criteria.json that run would reject is a finding on that file", () => {

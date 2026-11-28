@@ -286,11 +286,12 @@ test("runOptions: --trials defaults to 1, --agent-effort is claude-only and vali
   assert.equal(opts(["--agent-effort", "medium"]).agentEffort, "medium");
   assert.equal(opts([]).agentEffort, undefined);
   assert.throws(() => opts(["--agent-effort", "extreme"]), /--agent-effort must be low, medium/);
-  for (const harness of ["codex", "grok"])
+  for (const harness of ["codex", "grok"]) {
     assert.throws(
       () => opts(["--harness", harness, "--agent-effort", "low"]),
       new RegExp(`--agent-effort is only supported with --harness claude; ${harness}`),
     );
+  }
 });
 
 test("cli: an unsupported --agent-effort fails before an eval starts", () => {
@@ -346,7 +347,9 @@ process.exit(1);
   );
   const { configPath } = generate(dir, opts);
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  for (const p of config.providers) p.config.path_to_claude_code_executable = stub;
+  for (const p of config.providers) {
+    p.config.path_to_claude_code_executable = stub;
+  }
   fs.writeFileSync(configPath, JSON.stringify(config));
   const promptfoo = resolvePackageDir("promptfoo");
   assert.ok(promptfoo);
@@ -482,8 +485,9 @@ test("summarize: refuses to merge runs with different agent effort or trials", (
   const root = gitRoot();
   try {
     const evals = path.join(root, "skills", "demo", "evals");
-    for (const name of ["one", "two", "three"])
+    for (const name of ["one", "two", "three"]) {
       fs.cpSync(path.join(evals, "basic"), path.join(evals, name), { recursive: true });
+    }
     const { results, scorecards } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
     writeGraded(results, "demo--one", { agent_effort: "medium", trials: 3 });
@@ -586,8 +590,11 @@ test("generateRun: a Claude judge carries its effort on both Anthropic paths", (
     });
     assert.equal(judgeOf({ judgeModel: "claude-opus-5-5" }), "anthropic:messages:claude-opus-5-5");
   } finally {
-    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY;
-    else process.env.ANTHROPIC_API_KEY = saved;
+    if (saved === undefined) {
+      delete process.env.ANTHROPIC_API_KEY;
+    } else {
+      process.env.ANTHROPIC_API_KEY = saved;
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -811,15 +818,17 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
     assert.equal("skills" in controlConfig.providers[0].config, false);
     assert.equal(skillConfig.tests[0].assert[1].config.required, true);
     assert.equal(controlConfig.tests[0].assert[1].config.required, false);
-    for (const tool of ["Bash", "WebFetch", "WebSearch"])
+    for (const tool of ["Bash", "WebFetch", "WebSearch"]) {
       assert.ok(controlConfig.providers[0].config.append_allowed_tools.includes(tool));
+    }
 
     for (const harness of ["codex", "grok"] as const) {
       const c = generateRun(scenarioDir, { ...base, harness, control: true }, paths);
       assert.equal(c.name, `demo--basic--${harness}--control`);
       const wd = read(c.configPath).providers[0].config.working_dir;
-      for (const root of [".claude", ".agents", ".grok"])
+      for (const root of [".claude", ".agents", ".grok"]) {
         assert.equal(fs.existsSync(path.join(wd, root)), false, `${harness} ${root}`);
+      }
     }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -874,11 +883,12 @@ test("control: rows pair with their skill rows into lift and no-lift scenarios",
 test("control: an unattested control result keeps its variant and harness", () => {
   const dir = tmp("control-legacy");
   try {
-    for (const name of ["demo--basic--codex--control", "demo--basic--control", "demo--control"])
+    for (const name of ["demo--basic--codex--control", "demo--basic--control", "demo--control"]) {
       fs.writeFileSync(
         path.join(dir, `${name}.json`),
         JSON.stringify({ results: { results: [{ ...row(0.8, true), success: true }] } }),
       );
+    }
     const rows = reduceResults(dir, false).entries.map((e) => [
       e.skill,
       e.scenario,
@@ -910,8 +920,11 @@ test("codex: each run gets a home with the login and none of the operator's skil
     assert.deepEqual(fs.readdirSync(home), ["config.toml"]);
     assert.equal(fs.readFileSync(path.join(home, "config.toml"), "utf8"), "model = 'x'\n");
   } finally {
-    if (saved === undefined) delete process.env.CODEX_HOME;
-    else process.env.CODEX_HOME = saved;
+    if (saved === undefined) {
+      delete process.env.CODEX_HOME;
+    } else {
+      process.env.CODEX_HOME = saved;
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -1128,8 +1141,11 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
     assert.ok(fs.existsSync(path.join(home, ".config", "gateway", "auth.json")));
     assert.equal(fs.existsSync(path.join(home, ".agents")), false);
   } finally {
-    if (saved === undefined) delete process.env.HOME;
-    else process.env.HOME = saved;
+    if (saved === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = saved;
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -1149,8 +1165,11 @@ test("isolated image: the env marker alone on a host claims nothing", () => {
     assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, container);
     assert.equal(provider().sandbox_mode, container ? "danger-full-access" : "workspace-write");
   } finally {
-    if (saved === undefined) delete process.env.SKILLCHECK_ISOLATED;
-    else process.env.SKILLCHECK_ISOLATED = saved;
+    if (saved === undefined) {
+      delete process.env.SKILLCHECK_ISOLATED;
+    } else {
+      process.env.SKILLCHECK_ISOLATED = saved;
+    }
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -1161,7 +1180,9 @@ test("generateRun: the config and manifests that carry criteria are owner-only",
     const { configPath } = generate(dir, { trials: 2 });
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     assert.equal(fs.statSync(configPath).mode & 0o777, 0o600);
-    for (const t of config.tests) assert.equal(fs.statSync(t.vars.manifest).mode & 0o777, 0o600);
+    for (const t of config.tests) {
+      assert.equal(fs.statSync(t.vars.manifest).mode & 0o777, 0o600);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -1280,12 +1301,13 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
       undefined,
     );
     const codex = run({ install: ["near"] }, { harness: "codex" }).config.providers[0].config;
-    for (const root of [".claude", ".agents"])
+    for (const root of [".claude", ".agents"]) {
       assert.deepEqual(fs.readdirSync(path.join(codex.working_dir, root, "skills")).sort(), [
         "demo",
         "near",
         "x",
       ]);
+    }
     assert.throws(
       () => run({ install: ["near"], skill_use: "forbidden" }, { harness: "grok" }),
       /grok cannot evidence/,

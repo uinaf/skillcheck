@@ -38,7 +38,9 @@ function real(file: string): string | undefined {
 export function skillEvidence(context: EvidenceContext): string | undefined {
   const skill = context.config?.skill;
   const workdir = context.vars.workdir;
-  if (typeof skill !== "string" || typeof workdir !== "string") return undefined;
+  if (typeof skill !== "string" || typeof workdir !== "string") {
+    return undefined;
+  }
   const calls = (value: unknown): Call[] =>
     Array.isArray(value) ? value.filter((c): c is Call => c !== null && typeof c === "object") : [];
 
@@ -47,7 +49,9 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   const skillCall = calls(metadata?.skillCalls).find(
     (c) => c.name === skill && c.is_error !== true,
   );
-  if (skillCall) return `skill call ${skill}`;
+  if (skillCall) {
+    return `skill call ${skill}`;
+  }
 
   const installed = new Set(
     SKILL_ROOTS.map((root) => real(path.join(workdir, root, "skills", skill, "SKILL.md"))).filter(
@@ -59,9 +63,13 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   // back to the skill's source, which is not what the agent was handed.
   const root = real(workdir) ?? workdir;
   const read = calls(metadata?.toolCalls).find((c) => {
-    if (c.name !== "Read" || c.is_error !== false || typeof c.output !== "string") return false;
+    if (c.name !== "Read" || c.is_error !== false || typeof c.output !== "string") {
+      return false;
+    }
     const file = c.input?.file_path;
-    if (typeof file !== "string") return false;
+    if (typeof file !== "string") {
+      return false;
+    }
     const named = path.resolve(workdir, file);
     const inside = [workdir, root].some((w) => {
       const rel = path.relative(w, named);
@@ -70,7 +78,9 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     const target = real(named);
     return inside && target !== undefined && installed.has(target);
   });
-  if (read) return `read of the installed ${skill}/SKILL.md`;
+  if (read) {
+    return `read of the installed ${skill}/SKILL.md`;
+  }
 
   // Agents also print the file from a shell (`cd .claude/skills/x && cat
   // SKILL.md`, or a loop over every file), which a path check cannot follow.
@@ -86,7 +96,9 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
       typeof c.output === "string" &&
       opening.some((t) => (c.output as string).includes(t)),
   );
-  if (shown) return `shell read of the installed ${skill}/SKILL.md`;
+  if (shown) {
+    return `shell read of the installed ${skill}/SKILL.md`;
+  }
 
   // Codex reports a read only when the whole command exits zero, so `cat
   // SKILL.md; rg ...` with an rg that finds nothing hides a read that did put
@@ -94,7 +106,9 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   const printed = codexCommandOutputs(context.providerResponse?.raw).some((out) =>
     opening.some((t) => out.includes(t)),
   );
-  if (printed) return `shell read of the installed ${skill}/SKILL.md`;
+  if (printed) {
+    return `shell read of the installed ${skill}/SKILL.md`;
+  }
   return undefined;
 }
 
@@ -108,7 +122,9 @@ function codexCommandOutputs(raw: unknown): string[] {
     }
   }
   const items = (parsed as { items?: unknown } | null)?.items;
-  if (!Array.isArray(items)) return [];
+  if (!Array.isArray(items)) {
+    return [];
+  }
   return items.flatMap((item: { type?: unknown; aggregated_output?: unknown } | null) =>
     item?.type === "command_execution" && typeof item.aggregated_output === "string"
       ? [item.aggregated_output]

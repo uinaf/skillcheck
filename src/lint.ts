@@ -81,7 +81,9 @@ function lintSkill(dir: string, root: string, errors: string[]): void {
     .replace(/`[^`\n]*`/g, "");
   for (const link of body.matchAll(/\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+"[^"\n]*")?\s*\)/g)) {
     const target = link[1].replace(/^<(.*)>$/, "$1");
-    if (/^[a-z][a-z+.-]*:/.test(target) || target.startsWith("#") || target === "") continue;
+    if (/^[a-z][a-z+.-]*:/.test(target) || target.startsWith("#") || target === "") {
+      continue;
+    }
     const resolved = path.join(dir, target.split("#")[0]);
     if (!fs.existsSync(resolved)) {
       errors.push(`${label}: link target does not exist: ${target}`);
@@ -96,10 +98,14 @@ export function lintSkills(root: string): LintReport {
   const errors: string[] = [];
   const skills: string[] = [];
   for (const dir of roots) {
-    if (!fs.existsSync(dir)) continue;
+    if (!fs.existsSync(dir)) {
+      continue;
+    }
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       // Dot-dirs (.claude-plugin) are plugin metadata, not skill packages.
-      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      if (!entry.isDirectory() || entry.name.startsWith(".")) {
+        continue;
+      }
       lintSkill(path.join(dir, entry.name), root, errors);
       skills.push(path.join(dir, entry.name));
     }
@@ -117,12 +123,16 @@ function lintEvals(skills: string[], root: string, errors: string[]): void {
   const names = skills.map((dir) => path.basename(dir));
   for (const dir of skills) {
     const evals = path.join(dir, "evals");
-    if (!fs.existsSync(evals)) continue;
+    if (!fs.existsSync(evals)) {
+      continue;
+    }
     const skillMd = path.join(dir, "SKILL.md");
     const hidden = fs.existsSync(skillMd) && isHiddenSkill(fs.readFileSync(skillMd, "utf8"));
     // Same enumeration as sweep's discovery, so dot-dirs are not skipped.
     for (const scenario of fs.readdirSync(evals, { withFileTypes: true })) {
-      if (!scenario.isDirectory()) continue;
+      if (!scenario.isDirectory()) {
+        continue;
+      }
       const scenarioDir = path.join(evals, scenario.name);
       const criteria = path.join(scenarioDir, "criteria.json");
       if (fs.existsSync(criteria)) {
@@ -134,7 +144,9 @@ function lintEvals(skills: string[], root: string, errors: string[]): void {
         }
       }
       const file = path.join(scenarioDir, "task.md");
-      if (!fs.existsSync(file)) continue;
+      if (!fs.existsSync(file)) {
+        continue;
+      }
       const text = fs.readFileSync(file, "utf8").replace(FILE_BLOCK, "");
       for (const name of names) {
         const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

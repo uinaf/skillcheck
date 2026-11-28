@@ -33,8 +33,9 @@ export function toolVersion(): string {
 
 export function parsePositiveInt(flag: string, raw: string): number {
   const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0)
+  if (!Number.isInteger(n) || n <= 0) {
     throw new Error(`${flag} must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
   return n;
 }
 
@@ -68,7 +69,9 @@ export function parseArgs(argv: string[]): {
       positional.push(a);
     } else if (takesValue.has(a)) {
       const v = argv[++i];
-      if (v === undefined || v.startsWith("--")) throw new Error(`${a} needs a value`);
+      if (v === undefined || v.startsWith("--")) {
+        throw new Error(`${a} needs a value`);
+      }
       flags.set(a, v);
     } else if (a === "--all" || a === "--allow-mixed" || a === "--control") {
       flags.set(a, true);
@@ -106,18 +109,22 @@ export function stateDirs(
 
 export function runOptions(flags: Map<string, string | true>): RunOptions {
   const harness = (flags.get("--harness") ?? "claude") as string;
-  if (harness !== "claude" && harness !== "codex" && harness !== "grok")
+  if (harness !== "claude" && harness !== "codex" && harness !== "grok") {
     throw new Error(`--harness must be claude, codex, or grok, got ${harness}`);
-  if (flags.has("--max-turns") && harness !== "claude")
+  }
+  if (flags.has("--max-turns") && harness !== "claude") {
     throw new Error("--max-turns is only supported with --harness claude");
+  }
   const agentEffort = flags.get("--agent-effort") as string | undefined;
   if (agentEffort !== undefined) {
-    if (harness !== "claude")
+    if (harness !== "claude") {
       throw new Error(
         `--agent-effort is only supported with --harness claude; ${harness} has no effort setting wired`,
       );
-    if (!AGENT_EFFORTS.includes(agentEffort))
+    }
+    if (!AGENT_EFFORTS.includes(agentEffort)) {
       throw new Error(`--agent-effort must be ${AGENT_EFFORTS.join(", ")}, got ${agentEffort}`);
+    }
   }
   const agent = flags.get("--agent") as string | undefined;
   const judgeModel = (flags.get("--judge") as string | undefined) ?? "claude-opus-5";
@@ -126,10 +133,11 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
     // A bare Claude judge takes Claude's effort levels; a provider-qualified
     // judge takes that provider's reasoning_effort.
     const levels = judgeModel.includes(":") ? ["minimal", "low", "medium", "high"] : AGENT_EFFORTS;
-    if (!levels.includes(judgeEffort))
+    if (!levels.includes(judgeEffort)) {
       throw new Error(
         `--judge-effort for ${judgeModel} must be ${levels.join(", ")}, got ${judgeEffort}`,
       );
+    }
   }
   return {
     harness: harness as Harness,
@@ -203,7 +211,9 @@ export function assertUniformConfig(
   entries: (Partial<RunConfig> & { harness: string })[],
   allowMixed: boolean,
 ): void {
-  if (allowMixed) return;
+  if (allowMixed) {
+    return;
+  }
   const byHarness = new Map<string, Map<string, Partial<RunConfig>>>();
   for (const e of entries) {
     const configs = byHarness.get(e.harness) ?? new Map<string, Partial<RunConfig>>();
@@ -211,10 +221,11 @@ export function assertUniformConfig(
     byHarness.set(e.harness, configs);
   }
   for (const [harness, configs] of byHarness) {
-    if (configs.size > 1)
+    if (configs.size > 1) {
       throw new Error(
         `${harness} results span multiple run configurations (${[...configs.values()].map(describeConfig).join("; ")}); rerun them to match or pass --allow-mixed`,
       );
+    }
   }
 }
 
@@ -226,7 +237,9 @@ function ensureEvalPackages(opts: RunOptions): void {
   const missing = requiredEvalPackages(opts, Boolean(process.env.ANTHROPIC_API_KEY)).filter(
     (pkg) => resolvePackageDir(pkg) === undefined,
   );
-  if (missing.length === 0) return;
+  if (missing.length === 0) {
+    return;
+  }
   const peers: Record<string, string> =
     JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8")).peerDependencies ??
     {};
@@ -249,10 +262,14 @@ function ensureEvalPackages(opts: RunOptions): void {
 // back to fetching an unpinned promptfoo from the registry when it is absent.
 function promptfooEntry(): string {
   const dir = resolvePackageDir("promptfoo");
-  if (dir === undefined) throw new Error("promptfoo is not installed"); // ensureEvalPackages ran first
+  if (dir === undefined) {
+    throw new Error("promptfoo is not installed");
+  } // ensureEvalPackages ran first
   const bin: unknown = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).bin;
   const rel = typeof bin === "string" ? bin : (bin as Record<string, string> | null)?.promptfoo;
-  if (typeof rel !== "string") throw new Error(`promptfoo at ${dir} declares no bin`);
+  if (typeof rel !== "string") {
+    throw new Error(`promptfoo at ${dir} declares no bin`);
+  }
   return path.join(dir, rel);
 }
 
@@ -300,17 +317,20 @@ const ERRORED_REASON = 2;
 export function classifyResult(raw: unknown, expectedTrials?: number): Verdict {
   const root = raw as { results?: { results?: unknown; stats?: Stats | null } } | undefined;
   const rows = root?.results?.results;
-  if (!Array.isArray(rows) || rows.length === 0)
+  if (!Array.isArray(rows) || rows.length === 0) {
     return { error: "promptfoo output carried no result" };
-  if (expectedTrials !== undefined && rows.length !== expectedTrials)
+  }
+  if (expectedTrials !== undefined && rows.length !== expectedTrials) {
     return { error: `promptfoo returned ${rows.length} of ${expectedTrials} trials` };
+  }
   // Stats total every row, so they can only attest a single-row result.
   const stats = rows.length === 1 ? (root?.results?.stats ?? undefined) : undefined;
   const trials: Trial[] = [];
   for (const [i, row] of rows.entries()) {
     const verdict = classifyRow(row, stats);
-    if ("error" in verdict)
+    if ("error" in verdict) {
       return { error: rows.length === 1 ? verdict.error : `trial ${i + 1}: ${verdict.error}` };
+    }
     trials.push(verdict);
   }
   return { trials };
@@ -327,11 +347,14 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
       }
     | null
     | undefined;
-  if (res === undefined || res === null) return { error: "promptfoo output carried no result" };
+  if (res === undefined || res === null) {
+    return { error: "promptfoo output carried no result" };
+  }
 
   const message = typeof res.error === "string" ? res.error.trim() : "";
-  if (res.failureReason === ERRORED_REASON)
+  if (res.failureReason === ERRORED_REASON) {
     return { error: message || "promptfoo reported an errored test" };
+  }
   // promptfoo also copies a failed assert-set's threshold reason into the
   // result's error field while the test counts as a graded failure. That is a
   // judge's verdict, not a transport error, so the grading evidence wins over
@@ -341,7 +364,9 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
     (stats !== undefined &&
       (stats.errors ?? 0) === 0 &&
       ((stats.failures ?? 0) > 0 || (stats.successes ?? 0) > 0));
-  if (message !== "" && !graded) return { error: message };
+  if (message !== "" && !graded) {
+    return { error: message };
+  }
 
   if (
     !graded &&
@@ -403,7 +428,9 @@ export interface TrialStats {
 const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
 
 export function aggregateTrials(trials: Trial[]): TrialStats {
-  if (trials.length === 0) throw new Error("cannot aggregate zero trials");
+  if (trials.length === 0) {
+    throw new Error("cannot aggregate zero trials");
+  }
   const scores = trials.map((t) => t.score);
   const passes = trials.filter((t) => t.pass).length;
   const min = Math.min(...scores);
@@ -426,7 +453,9 @@ export function aggregateTrials(trials: Trial[]): TrialStats {
 
 export function formatStats(s: TrialStats): string {
   const line = `score=${s.score.toFixed(4)}`;
-  if (s.trials === 1) return line;
+  if (s.trials === 1) {
+    return line;
+  }
   return [
     line,
     `min=${s.score_min.toFixed(4)}`,
@@ -457,9 +486,12 @@ export function ensurePrivateDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const st = fs.lstatSync(dir);
   const uid = process.getuid?.();
-  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid))
+  if (!st.isDirectory() || (uid !== undefined && st.uid !== uid)) {
     throw new Error(`scratch dir ${dir} is not a directory owned by this user`);
-  if ((st.mode & 0o077) !== 0) fs.chmodSync(dir, 0o700);
+  }
+  if ((st.mode & 0o077) !== 0) {
+    fs.chmodSync(dir, 0o700);
+  }
 }
 
 function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOutcome {
@@ -510,7 +542,9 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   );
   const rc = r.status ?? 1; // null status (signal) counts as failure
   const outcome: RunOutcome = { name, rc, resultPath };
-  if (rc !== 0) return outcome; // ERROR regardless of what's on disk
+  if (rc !== 0) {
+    return outcome;
+  } // ERROR regardless of what's on disk
 
   let verdict: Verdict;
   try {
@@ -518,7 +552,9 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   } catch {
     verdict = { error: "promptfoo produced no parseable result file" };
   }
-  if ("error" in verdict) return { ...outcome, error: verdict.error };
+  if ("error" in verdict) {
+    return { ...outcome, error: verdict.error };
+  }
   outcome.stats = aggregateTrials(verdict.trials);
 
   // Provenance is only written for a graded result: an errored run has nothing
@@ -549,10 +585,14 @@ function judgeName(judge: unknown): string {
   // and the config cannot tell them apart; read it as the bare default.
   // Other provider-qualified IDs are recorded verbatim. SDK judge objects
   // carry the model in config, while wrapped providers carry it in id.
-  if (typeof judge === "string") return judge.replace(/^anthropic:messages:/, "");
+  if (typeof judge === "string") {
+    return judge.replace(/^anthropic:messages:/, "");
+  }
   const j = judge as { id?: unknown; config?: { model?: unknown; effort?: unknown } } | null;
   const name = j?.config?.model ?? j?.id;
-  if (typeof name !== "string") return "unknown";
+  if (typeof name !== "string") {
+    return "unknown";
+  }
   // Only a bare Claude judge is wrapped with `effort`; a provider-qualified
   // judge is wrapped with `reasoning_effort` and keeps its full ID.
   return j?.config?.effort === undefined ? name : name.replace(/^anthropic:messages:/, "");
@@ -613,7 +653,9 @@ export function liveScenarios(root: string): Set<string> | undefined {
     fs.existsSync(path.join(root, "skills")) ||
     (fs.existsSync(cli) &&
       fs.readdirSync(cli).some((d) => fs.existsSync(path.join(cli, d, "skills"))));
-  if (!hasTree) return undefined;
+  if (!hasTree) {
+    return undefined;
+  }
   return new Set(
     discoverScenarios(root).map((dir) => {
       const parts = dir.split(path.sep);
@@ -631,15 +673,21 @@ function discoverScenarios(root: string): string[] {
   const cliDir = path.join(root, "cli");
   if (fs.existsSync(cliDir)) {
     for (const e of fs.readdirSync(cliDir, { withFileTypes: true })) {
-      if (e.isDirectory()) roots.push(path.join(cliDir, e.name, "skills"));
+      if (e.isDirectory()) {
+        roots.push(path.join(cliDir, e.name, "skills"));
+      }
     }
   }
   const found: string[] = [];
   for (const dir of roots) {
-    if (!fs.existsSync(dir)) continue;
+    if (!fs.existsSync(dir)) {
+      continue;
+    }
     for (const skill of fs.readdirSync(dir, { withFileTypes: true })) {
       const evalsDir = path.join(dir, skill.name, "evals");
-      if (!skill.isDirectory() || !fs.existsSync(evalsDir)) continue;
+      if (!skill.isDirectory() || !fs.existsSync(evalsDir)) {
+        continue;
+      }
       for (const sc of fs.readdirSync(evalsDir, { withFileTypes: true })) {
         const scenarioDir = path.join(evalsDir, sc.name);
         if (
@@ -661,7 +709,9 @@ const RUN_FLAGS =
 // Outside the isolated image the agent shares the operator's machine: it can
 // read installed skills, plugins, guidance, and any file by absolute path.
 function warnHostRun(): void {
-  if (isIsolated()) return;
+  if (isIsolated()) {
+    return;
+  }
   console.error(
     "warning: host run; the agent can read this machine's installed skills, plugins, and files, so scores are not isolated. Run in the isolated image: docs/usage.md#isolated-runs",
   );
@@ -669,7 +719,9 @@ function warnHostRun(): void {
 
 function cmdRun(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length !== 1) fail(`usage: skillcheck run <scenario-dir> ${RUN_FLAGS}`);
+  if (positional.length !== 1) {
+    fail(`usage: skillcheck run <scenario-dir> ${RUN_FLAGS}`);
+  }
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
   warnHostRun();
@@ -686,7 +738,9 @@ function cmdRun(argv: string[]): void {
 
 function cmdSweep(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length > 0) fail(`usage: skillcheck sweep ${RUN_FLAGS} [--all]`);
+  if (positional.length > 0) {
+    fail(`usage: skillcheck sweep ${RUN_FLAGS} [--all]`);
+  }
   const root = resolveRoot(flags);
   const opts = runOptions(flags);
   ensureEvalPackages(opts);
@@ -712,7 +766,9 @@ function cmdSweep(argv: string[]): void {
         console.log(`SKIP  ${name} (results exist; use --all to rerun)`);
         continue;
       }
-      if (graded) console.log(`RERUN ${name} (results used ${describeConfig(config)})`);
+      if (graded) {
+        console.log(`RERUN ${name} (results used ${describeConfig(config)})`);
+      }
     }
     const o = runScenario(dir, opts, root);
     if (o.stats === undefined) {
@@ -775,9 +831,13 @@ function resultIdentity(file: string, dir: string): Identity {
       // Old results and attempts have no identity metadata.
     }
   }
-  if (/^~v3~[0-9a-f]{64}$/.test(base)) throw new Error(`missing identity metadata for ${file}`);
+  if (/^~v3~[0-9a-f]{64}$/.test(base)) {
+    throw new Error(`missing identity metadata for ${file}`);
+  }
   const decode = (part: string): string => {
-    if (!part.startsWith("~v2~")) return part;
+    if (!part.startsWith("~v2~")) {
+      return part;
+    }
     try {
       const decoded = decodeURIComponent(part.slice(4));
       return encodeRunNamePart(decoded) === part ? decoded : part;
@@ -910,10 +970,14 @@ export function mergeScorecard(
   fresh: ScorecardEntry[],
 ): { entries: ScorecardEntry[]; carried: number } {
   const byKey = new Map<string, ScorecardEntry>();
-  for (const e of existing) byKey.set(entryKey(e), e);
+  for (const e of existing) {
+    byKey.set(entryKey(e), e);
+  }
   let carried = byKey.size;
   for (const e of fresh) {
-    if (byKey.has(entryKey(e))) carried--;
+    if (byKey.has(entryKey(e))) {
+      carried--;
+    }
     byKey.set(entryKey(e), e);
   }
   const entries = [...byKey.values()].sort((a, b) =>
@@ -930,7 +994,9 @@ export function treeShaOf(entries: ScorecardEntry[]): string {
 // Reads a scorecard that is about to be merged into. A same-date file that
 // cannot be understood is a stop, not a licence to overwrite it.
 function readExistingScorecard(out: string): ScorecardEntry[] {
-  if (!fs.existsSync(out)) return [];
+  if (!fs.existsSync(out)) {
+    return [];
+  }
   let prev: unknown;
   try {
     prev = JSON.parse(fs.readFileSync(out, "utf8"));
@@ -938,18 +1004,22 @@ function readExistingScorecard(out: string): ScorecardEntry[] {
     throw new Error(`existing scorecard ${out} is not valid JSON; refusing to overwrite it`);
   }
   const scenarios = (prev as { scenarios?: unknown } | undefined)?.scenarios;
-  if (!Array.isArray(scenarios))
+  if (!Array.isArray(scenarios)) {
     throw new Error(`existing scorecard ${out} has no scenarios array; refusing to overwrite it`);
+  }
   return scenarios as ScorecardEntry[];
 }
 
 function cmdSummarize(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length > 0) fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
+  if (positional.length > 0) {
+    fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
+  }
   const root = resolveRoot(flags);
   const dirs = stateDirs(root);
-  if (!fs.existsSync(dirs.results))
+  if (!fs.existsSync(dirs.results)) {
     fail(`no results directory at ${dirs.results}; run some evals first`);
+  }
   const live = liveScenarios(root);
   const {
     entries,
@@ -961,7 +1031,11 @@ function cmdSummarize(argv: string[]): void {
   const out = path.join(dirs.scorecards, `${new Date().toISOString().slice(0, 10)}.json`);
   const previous = readExistingScorecard(out);
   const existing = previous.filter((e) => isLive(live, e));
-  for (const e of previous) if (!isLive(live, e)) retiredResults.add(entryKey(e));
+  for (const e of previous) {
+    if (!isLive(live, e)) {
+      retiredResults.add(entryKey(e));
+    }
+  }
   const retired = retiredResults.size;
   const skippedKeys = new Set(
     skipped
@@ -996,7 +1070,9 @@ function cmdSummarize(argv: string[]): void {
     scenarios: merged.entries,
   };
   fs.writeFileSync(out, JSON.stringify(scorecard, null, 2) + "\n");
-  if (retired > 0) console.log(`dropped ${retired} row(s) for scenarios no longer in the tree`);
+  if (retired > 0) {
+    console.log(`dropped ${retired} row(s) for scenarios no longer in the tree`);
+  }
   const scenarios = merged.entries.filter((e) => e.variant !== "control");
   console.log(
     `${out}: ${scenarios.length} scenario(s), ${scenarios.filter((e) => e.pass).length} passing, ${merged.entries.length - scenarios.length} control(s), ${skipped.length} skipped file(s)`,
@@ -1039,8 +1115,11 @@ export function summarizeSkills(entries: ScorecardEntry[]): SkillSummary[] {
   const controls = new Map<string, ScorecardEntry>();
   for (const e of entries) {
     const key = `${e.skill}\0${e.harness}`;
-    if (e.variant === "control") controls.set(`${key}\0${e.scenario}`, e);
-    else groups.set(key, [...(groups.get(key) ?? []), e]);
+    if (e.variant === "control") {
+      controls.set(`${key}\0${e.scenario}`, e);
+    } else {
+      groups.set(key, [...(groups.get(key) ?? []), e]);
+    }
   }
   const mean = (xs: number[]) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
   return [...groups.entries()].map(([key, rows]) => {
@@ -1095,11 +1174,15 @@ function formatSkillTable(rows: SkillSummary[]): string {
 
 function cmdLint(argv: string[]): void {
   const { positional, flags } = parseArgs(argv);
-  if (positional.length > 1) fail("usage: skillcheck lint [<root>] [--root DIR]");
+  if (positional.length > 1) {
+    fail("usage: skillcheck lint [<root>] [--root DIR]");
+  }
   const root = positional.length === 1 ? path.resolve(positional[0]) : resolveRoot(flags);
   const { errors, count } = lintSkills(root);
   if (errors.length > 0) {
-    for (const e of errors) console.error(e);
+    for (const e of errors) {
+      console.error(e);
+    }
     console.error(`skill lint: ${errors.length} error(s) across ${count} package(s)`);
     process.exit(1);
   }
@@ -1110,7 +1193,9 @@ function cmdLint(argv: string[]): void {
 // must be compared by filesystem identity.
 function isMainModule(): boolean {
   const entry = process.argv[1];
-  if (entry === undefined) return false;
+  if (entry === undefined) {
+    return false;
+  }
   try {
     return fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url));
   } catch {
@@ -1121,11 +1206,17 @@ function isMainModule(): boolean {
 if (isMainModule()) {
   const [cmd, ...rest] = process.argv.slice(2);
   try {
-    if (cmd === "run") cmdRun(rest);
-    else if (cmd === "sweep") cmdSweep(rest);
-    else if (cmd === "summarize") cmdSummarize(rest);
-    else if (cmd === "lint") cmdLint(rest);
-    else fail("usage: skillcheck <lint|run|sweep|summarize> ...");
+    if (cmd === "run") {
+      cmdRun(rest);
+    } else if (cmd === "sweep") {
+      cmdSweep(rest);
+    } else if (cmd === "summarize") {
+      cmdSummarize(rest);
+    } else if (cmd === "lint") {
+      cmdLint(rest);
+    } else {
+      fail("usage: skillcheck <lint|run|sweep|summarize> ...");
+    }
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   }

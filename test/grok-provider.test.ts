@@ -128,9 +128,11 @@ test("Grok provider keeps a multibyte character split across stdout chunks", asy
   }
 });
 
-for (const stdio of ["ignore", "inherit"] as const)
+for (const stdio of ["ignore", "inherit"] as const) {
   test(`Grok provider stops helpers with ${stdio} stdio`, async () => {
-    if (process.platform === "win32") return;
+    if (process.platform === "win32") {
+      return;
+    }
     const fixtureRun = fixture([]);
     const pidFile = path.join(fixtureRun.dir, "helper.pid");
     fs.writeFileSync(
@@ -171,6 +173,7 @@ for (const stdio of ["ignore", "inherit"] as const)
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
     }
   });
+}
 
 for (const event of [
   null,

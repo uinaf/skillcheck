@@ -113,7 +113,6 @@ export default defineConfig({
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
       "unicorn/consistent-function-scoping": "off",
-      curly: "off",
       "typescript/array-type": "off",
       "anti-slop/no-runtime-typeof": "off",
       "anti-slop/no-unknown-parameters": "off",

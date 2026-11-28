@@ -20,13 +20,16 @@ const TOTAL_CAP = 64_000;
 function safeSlice(text: string, end: number): string {
   let cut = text.slice(0, end);
   const last = cut.charCodeAt(cut.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  if (last >= 0xd800 && last <= 0xdbff) {
+    cut = cut.slice(0, -1);
+  }
   return cut;
 }
 
 function capped(rel: string, text: string): string {
-  if (text.length <= PER_FILE_CAP)
+  if (text.length <= PER_FILE_CAP) {
     return `=== OUTPUT FILE: ${rel} ===\n${text}\n=== END OUTPUT FILE ===`;
+  }
   return `=== OUTPUT FILE: ${rel} (truncated: showing ${PER_FILE_CAP} of ${text.length} chars) ===\n${safeSlice(text, PER_FILE_CAP)}\n=== END OUTPUT FILE ===`;
 }
 
@@ -53,7 +56,9 @@ export default function transform(output: string, context: TransformContext): st
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (!SKIPPED_DIRS.has(e.name)) walk(p);
+        if (!SKIPPED_DIRS.has(e.name)) {
+          walk(p);
+        }
       } else if (e.isFile()) {
         const rel = path.relative(workdir, p);
         visited.add(rel);
@@ -78,13 +83,16 @@ export default function transform(output: string, context: TransformContext): st
   };
   walk(workdir);
   for (const rel of Object.keys(manifest)) {
-    if (!visited.has(rel))
+    if (!visited.has(rel)) {
       sections.push({
         rel,
         text: `=== DELETED FILE: ${rel} === (input file removed by the agent)`,
       });
+    }
   }
-  if (sections.length === 0) return output;
+  if (sections.length === 0) {
+    return output;
+  }
   // Deterministic path order: the total cap must not drop files by readdir
   // whim; later-sorting files are still the ones cut, but reproducibly so.
   sections.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
