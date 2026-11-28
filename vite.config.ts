@@ -1,3 +1,4 @@
+import uinaf, { env, ignorePatterns } from "@uinaf/oxlint-config/vite-plus";
 import { defineConfig } from "vite-plus";
 
 const stableShell = {
@@ -105,9 +106,42 @@ export default defineConfig({
   },
 
   lint: {
-    ignorePatterns: ["dist/**", "test/fixtures/**"],
+    extends: [uinaf],
+    env,
+    ignorePatterns: [...ignorePatterns, "dist/**", "test/fixtures/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    rules: {
+      "vite-plus/prefer-vite-plus-imports": "error",
+      "unicorn/consistent-function-scoping": "off",
+      curly: "off",
+      "typescript/array-type": "off",
+      "anti-slop/no-runtime-typeof": "off",
+      "anti-slop/no-unknown-parameters": "off",
+      "quality/no-array-filter-map": "off",
+      "anti-slop/require-safety-comment-for-type-assertion": "off",
+      "uinaf/no-comments": "off",
+      "quality/no-known-value-widening": "off",
+      "anti-slop/require-readable-spacing": "off",
+      "unicorn/prefer-import-meta-properties": "off",
+      "unicorn/numeric-separators-style": "off",
+      "unicorn/catch-error-name": "off",
+      "no-promise-executor-return": "off",
+      "unicorn/prefer-string-replace-all": "off",
+      "unicorn/prefer-string-raw": "off",
+      "quality/no-conditional-empty-object-spread": "off",
+      "quality/no-unsafe-dictionary-type": "off",
+      "import/consistent-type-specifier-style": "off",
+      "quality/no-object-parameters": "off",
+      "no-regex-spaces": "off",
+      "no-console": "off",
+      "quality/no-unknown-returns": "off",
+      "typescript/no-unsafe-return": "off",
+      "typescript/no-unsafe-member-access": "off",
+      "typescript/no-unsafe-type-assertion": "off",
+      "typescript/no-unnecessary-type-assertion": "off",
+      "typescript/no-unsafe-assignment": "off",
+      "typescript/no-unsafe-call": "off",
+    },
     options: { typeAware: true, typeCheck: true },
   },
 
