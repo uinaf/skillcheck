@@ -58,9 +58,11 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   }
 
   const installed = new Set(
-    SKILL_ROOTS.map((root) => real(path.join(workdir, root, "skills", skill, "SKILL.md"))).filter(
-      (p): p is string => p !== undefined,
-    ),
+    SKILL_ROOTS.flatMap((root) => {
+      const p = real(path.join(workdir, root, "skills", skill, "SKILL.md"));
+
+      return p === undefined ? [] : [p];
+    }),
   );
 
   // A completed read carries is_error: false and its output. The named path
@@ -100,9 +102,11 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   // SKILL.md`, or a loop over every file), which a path check cannot follow.
   // Count a successful shell call whose output carries the installed file's
   // opening text: then the same instructions reached the agent's context.
-  const opening = [...installed]
-    .map((p) => fs.readFileSync(p, "utf8").slice(0, 300).trim())
-    .filter((t) => t.length >= 40);
+  const opening = [...installed].flatMap((p) => {
+    const t = fs.readFileSync(p, "utf8").slice(0, 300).trim();
+
+    return t.length >= 40 ? [t] : [];
+  });
 
   const shown = calls(metadata?.toolCalls).find(
     (c) =>

@@ -115,7 +115,6 @@ export default defineConfig({
       "unicorn/consistent-function-scoping": "off",
       "anti-slop/no-runtime-typeof": "off",
       "anti-slop/no-unknown-parameters": "off",
-      "quality/no-array-filter-map": "off",
       "anti-slop/require-safety-comment-for-type-assertion": "off",
       "uinaf/no-comments": "off",
       "quality/no-known-value-widening": "off",
