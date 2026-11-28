@@ -121,7 +121,6 @@ export default defineConfig({
       "quality/no-known-value-widening": "off",
       "unicorn/prefer-import-meta-properties": "off",
       "no-promise-executor-return": "off",
-      "unicorn/prefer-string-raw": "off",
       "quality/no-conditional-empty-object-spread": "off",
       "quality/no-unsafe-dictionary-type": "off",
       "import/consistent-type-specifier-style": "off",

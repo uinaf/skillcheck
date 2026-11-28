@@ -188,7 +188,7 @@ function lintEvals(skills: Array<string>, root: string, errors: Array<string>): 
       const text = fs.readFileSync(file, "utf8").replace(FILE_BLOCK, "");
 
       for (const name of names) {
-        const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
         if (new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "i").test(text)) {
           errors.push(`${path.relative(root, file)}: task names skill ${name}`);
