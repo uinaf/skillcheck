@@ -88,9 +88,9 @@ export function loadScenario(scenarioDir: string): Scenario {
 
   try {
     parsed = parseCriteria(scenarioDir, hidden);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`${path.join(scenarioDir, "criteria.json")}: ${message}`, { cause: err });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${path.join(scenarioDir, "criteria.json")}: ${message}`, { cause: error });
   }
 
   const { criteria, alternatives } = parsed;
@@ -132,9 +132,9 @@ export function parseCriteria(
 
   try {
     criteria = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`not valid JSON: ${err instanceof Error ? err.message : String(err)}`, {
-      cause: err,
+  } catch (error) {
+    throw new Error(`not valid JSON: ${error instanceof Error ? error.message : String(error)}`, {
+      cause: error,
     });
   }
 

@@ -73,8 +73,8 @@ export default function transform(output: string, context: TransformContext): st
 
         try {
           body = fs.readFileSync(p);
-        } catch (err) {
-          const detail = err instanceof Error ? err.message : String(err);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
           sections.push({ rel, text: `=== UNREADABLE FILE: ${rel} === (${detail})` });
           continue;
         }

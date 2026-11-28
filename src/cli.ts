@@ -1398,7 +1398,7 @@ if (isMainModule()) {
     } else {
       fail("usage: skillcheck <lint|run|sweep|summarize> ...");
     }
-  } catch (err) {
-    fail(err instanceof Error ? err.message : String(err));
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
 }

@@ -173,8 +173,8 @@ function lintEvals(skills: Array<string>, root: string, errors: Array<string>): 
       if (fs.existsSync(criteria)) {
         try {
           parseCriteria(scenarioDir, hidden);
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
           errors.push(`${path.relative(root, criteria)}: ${message}`);
         }
       }
