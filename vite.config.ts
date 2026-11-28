@@ -123,7 +123,6 @@ export default defineConfig({
       "no-promise-executor-return": "off",
       "quality/no-conditional-empty-object-spread": "off",
       "quality/no-unsafe-dictionary-type": "off",
-      "import/consistent-type-specifier-style": "off",
       "quality/no-object-parameters": "off",
       "no-regex-spaces": "off",
       "no-console": "off",

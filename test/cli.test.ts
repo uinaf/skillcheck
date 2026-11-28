@@ -16,9 +16,8 @@ import {
   stateDirs,
   toolVersion,
   treeShaOf,
-  type ScorecardEntry,
-  type Verdict,
 } from "../src/cli.ts";
+import type { ScorecardEntry, Verdict } from "../src/cli.ts";
 import {
   generateRun,
   requiredEvalPackages,

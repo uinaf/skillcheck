@@ -15,9 +15,8 @@ import {
   requiredEvalPackages,
   resolvePackageDir,
   runNameFor,
-  type Harness,
-  type RunOptions,
 } from "./scenario.ts";
+import type { Harness, RunOptions } from "./scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(here, "..");

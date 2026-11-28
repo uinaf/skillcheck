@@ -15,16 +15,16 @@ import {
   runOptions,
   stateDirs,
   summarizeSkills,
-  type ScorecardEntry,
 } from "../src/cli.ts";
+import type { ScorecardEntry } from "../src/cli.ts";
 import {
   generateRun,
   linkedSiblings,
   loadScenario,
   materialize,
   resolvePackageDir,
-  type RunOptions,
 } from "../src/scenario.ts";
+import type { RunOptions } from "../src/scenario.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cli = path.join(here, "..", "src", "cli.ts");
