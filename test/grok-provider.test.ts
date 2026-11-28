@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { test } from "vite-plus/test";
 import GrokProvider from "../src/grok-provider.ts";
 
@@ -173,7 +174,7 @@ for (const stdio of ["ignore", "inherit"] as const) {
           break;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 25));
+        await sleep(25);
       }
 
       assert.equal(alive, false, "a successful run must not leave its helper alive");
