@@ -124,7 +124,6 @@ export default defineConfig({
       "quality/no-conditional-empty-object-spread": "off",
       "quality/no-unsafe-dictionary-type": "off",
       "quality/no-object-parameters": "off",
-      "no-regex-spaces": "off",
       "no-console": "off",
       "quality/no-unknown-returns": "off",
       "typescript/no-unsafe-return": "off",

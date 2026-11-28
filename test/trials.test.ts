@@ -578,7 +578,7 @@ syncBuiltinESMExports();
 
     const same = sweep();
     assert.equal(same.status, 0, same.stderr);
-    assert.match(same.stdout, /SKIP  demo--basic/);
+    assert.match(same.stdout, /SKIP {2}demo--basic/);
 
     const metaFile = path.join(results, "demo--basic.meta.json");
     const online = JSON.parse(fs.readFileSync(metaFile, "utf8"));
@@ -591,7 +591,7 @@ syncBuiltinESMExports();
     const changed = sweep("--agent-effort", "medium");
     assert.equal(changed.status, 0, changed.stderr);
     assert.match(changed.stdout, /RERUN demo--basic \(results used agent claude-opus-5, judge/);
-    assert.match(changed.stdout, /PASS  demo--basic score=0\.9500/);
+    assert.match(changed.stdout, /PASS {2}demo--basic score=0\.9500/);
     const meta = JSON.parse(fs.readFileSync(path.join(results, "demo--basic.meta.json"), "utf8"));
     assert.equal(meta.agent_effort, "medium");
     assert.equal(meta.aggregate.pass, true);
