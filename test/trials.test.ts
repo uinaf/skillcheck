@@ -3,7 +3,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { test } from "vite-plus/test";
 import {
   aggregateTrials,
@@ -26,7 +25,7 @@ import {
 } from "../src/scenario.ts";
 import type { RunOptions } from "../src/scenario.ts";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 const cli = path.join(here, "..", "src", "cli.ts");
 const scenario = path.join(here, "fixtures", "clean", "skills", "demo", "evals", "basic");
 

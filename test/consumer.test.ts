@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { test } from "vite-plus/test";
 
-const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = path.join(import.meta.dirname, "..");
 
 function run(command: string, args: Array<string>, cwd: string, env = process.env) {
   return spawnSync(command, args, { cwd, encoding: "utf8", env });

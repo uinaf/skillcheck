@@ -5,7 +5,6 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { lintSkills } from "./lint.ts";
 import {
   DEFAULT_CLAUDE_AGENT,
@@ -18,12 +17,12 @@ import {
 } from "./scenario.ts";
 import type { Harness, RunOptions } from "./scenario.ts";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 const packageDir = path.resolve(here, "..");
 
 // node refuses to strip types under node_modules, so an installed copy runs the
 // compiled dist. Follow this module's own extension to find its sibling.
-const selfExt = path.extname(fileURLToPath(import.meta.url));
+const selfExt = path.extname(import.meta.filename);
 
 // Recorded in every result sidecar: a scorecard has to say which harness build
 // produced it, not just which skills tree it graded.
@@ -1376,7 +1375,7 @@ function isMainModule(): boolean {
   }
 
   try {
-    return fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url));
+    return fs.realpathSync(entry) === fs.realpathSync(import.meta.filename);
   } catch {
     return false;
   }
