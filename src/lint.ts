@@ -5,13 +5,13 @@ import { FILE_BLOCK, isHiddenSkill, parseCriteria } from "./scenario.ts";
 const ALLOWED_KEYS = new Set(["name", "description", "disable-model-invocation"]);
 
 export interface LintReport {
-  errors: string[];
+  errors: Array<string>;
   count: number;
 }
 
 // Findings name paths relative to the linted root, so output reads the same
 // whether the tool runs from inside the repo or from an install elsewhere.
-function lintSkill(dir: string, root: string, errors: string[]): void {
+function lintSkill(dir: string, root: string, errors: Array<string>): void {
   const skillMd = path.join(dir, "SKILL.md");
   const label = path.relative(root, skillMd);
   if (!fs.existsSync(skillMd)) {
@@ -95,8 +95,8 @@ export function lintSkills(root: string): LintReport {
   const roots = ["skills", ...fs.globSync("cli/*/skills", { cwd: root })].map((r) =>
     path.join(root, r),
   );
-  const errors: string[] = [];
-  const skills: string[] = [];
+  const errors: Array<string> = [];
+  const skills: Array<string> = [];
   for (const dir of roots) {
     if (!fs.existsSync(dir)) {
       continue;
@@ -119,7 +119,7 @@ export function lintSkills(root: string): LintReport {
 // installed copy of it. Any skill in the root counts, not just the one under
 // test. Inline input files are repository state, where a CLI that shares its
 // skill's name legitimately appears, so only the prompt prose is checked.
-function lintEvals(skills: string[], root: string, errors: string[]): void {
+function lintEvals(skills: Array<string>, root: string, errors: Array<string>): void {
   const names = skills.map((dir) => path.basename(dir));
   for (const dir of skills) {
     const evals = path.join(dir, "evals");

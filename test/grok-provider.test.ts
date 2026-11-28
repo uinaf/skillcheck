@@ -5,7 +5,7 @@ import path from "node:path";
 import { test } from "vite-plus/test";
 import GrokProvider from "../src/grok-provider.ts";
 
-function fixture(events: unknown[] | ((skillFile: string) => unknown[])): {
+function fixture(events: Array<unknown> | ((skillFile: string) => Array<unknown>)): {
   dir: string;
   command: string;
   skillFile: string;

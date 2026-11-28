@@ -119,7 +119,7 @@ export default class GrokProvider {
     callOptions?: { abortSignal?: AbortSignal },
   ): Promise<{
     output?: string;
-    metadata?: { skillCalls: SkillCall[] };
+    metadata?: { skillCalls: Array<SkillCall> };
     tokenUsage?: { prompt: number; completion: number; total: number; cached: number };
     cost?: number;
     error?: string;
@@ -160,7 +160,7 @@ export default class GrokProvider {
       let cost: number | undefined;
       let error: string | undefined;
       const reads = new Map<string, string>();
-      const skillCalls: SkillCall[] = [];
+      const skillCalls: Array<SkillCall> = [];
 
       const stop = (reason: string): void => {
         error ??= reason;

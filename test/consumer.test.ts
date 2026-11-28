@@ -8,7 +8,7 @@ import { test } from "vite-plus/test";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function run(command: string, args: string[], cwd: string, env = process.env) {
+function run(command: string, args: Array<string>, cwd: string, env = process.env) {
   return spawnSync(command, args, { cwd, encoding: "utf8", env });
 }
 

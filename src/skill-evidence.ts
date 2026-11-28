@@ -41,7 +41,7 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   if (typeof skill !== "string" || typeof workdir !== "string") {
     return undefined;
   }
-  const calls = (value: unknown): Call[] =>
+  const calls = (value: unknown): Array<Call> =>
     Array.isArray(value) ? value.filter((c): c is Call => c !== null && typeof c === "object") : [];
 
   // context.metadata is promptfoo's shortcut for providerResponse.metadata.
@@ -112,7 +112,7 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   return undefined;
 }
 
-function codexCommandOutputs(raw: unknown): string[] {
+function codexCommandOutputs(raw: unknown): Array<string> {
   let parsed: unknown = raw;
   if (typeof raw === "string") {
     try {

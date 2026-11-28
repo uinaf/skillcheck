@@ -47,11 +47,11 @@ function fail(msg: string): never {
 }
 
 // Throws on bad input; the CLI entrypoint catches and exits 1.
-export function parseArgs(argv: string[]): {
-  positional: string[];
+export function parseArgs(argv: Array<string>): {
+  positional: Array<string>;
   flags: Map<string, string | true>;
 } {
-  const positional: string[] = [];
+  const positional: Array<string> = [];
   const flags = new Map<string, string | true>();
   const takesValue = new Set([
     "--root",
@@ -208,7 +208,7 @@ function describeConfig(c: Partial<RunConfig>): string {
 // Throws when rows of one harness were measured with different configurations.
 // Harnesses legitimately differ from each other, so they are compared apart.
 export function assertUniformConfig(
-  entries: (Partial<RunConfig> & { harness: string })[],
+  entries: Array<Partial<RunConfig> & { harness: string }>,
   allowMixed: boolean,
 ): void {
   if (allowMixed) {
@@ -287,7 +287,7 @@ export interface Trial {
   skillUsed: boolean;
 }
 
-export type Verdict = { trials: Trial[] } | { error: string };
+export type Verdict = { trials: Array<Trial> } | { error: string };
 
 interface Stats {
   successes?: number;
@@ -325,7 +325,7 @@ export function classifyResult(raw: unknown, expectedTrials?: number): Verdict {
   }
   // Stats total every row, so they can only attest a single-row result.
   const stats = rows.length === 1 ? (root?.results?.stats ?? undefined) : undefined;
-  const trials: Trial[] = [];
+  const trials: Array<Trial> = [];
   for (const [i, row] of rows.entries()) {
     const verdict = classifyRow(row, stats);
     if ("error" in verdict) {
@@ -384,7 +384,7 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
   // assertion, so both are read from their own components. A row without
   // them was not graded against this harness's assertions.
   const components = Array.isArray(res.gradingResult?.componentResults)
-    ? (res.gradingResult.componentResults as (Component | null)[])
+    ? (res.gradingResult.componentResults as Array<Component | null>)
     : [];
   const checklist = components.find((c) => c?.metadata?.assertionSet?.type === "assert-set");
   // Results before the evidence assertion used promptfoo's built-in type,
@@ -398,7 +398,7 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
   // A rubric item whose judge call failed scores 0 with promptfoo's
   // graderError tag; that is a broken judge, not a verdict on the work.
   const items = Array.isArray(checklist.componentResults)
-    ? (checklist.componentResults as (Component | null)[])
+    ? (checklist.componentResults as Array<Component | null>)
     : [];
   const judgeError = items.find((c) => c?.metadata?.graderError === true);
   if (judgeError) {
@@ -427,7 +427,7 @@ export interface TrialStats {
 
 const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
 
-export function aggregateTrials(trials: Trial[]): TrialStats {
+export function aggregateTrials(trials: Array<Trial>): TrialStats {
   if (trials.length === 0) {
     throw new Error("cannot aggregate zero trials");
   }
@@ -615,10 +615,10 @@ export function resultRunConfig(raw: unknown, meta: unknown, harness: string): R
   }
   const r = raw as {
     config?: {
-      providers?: { config?: { model?: unknown; effort?: unknown } }[];
+      providers?: Array<{ config?: { model?: unknown; effort?: unknown } }>;
       defaultTest?: { options?: { provider?: unknown } };
     };
-    results?: { results?: unknown[] };
+    results?: { results?: Array<unknown> };
   };
   const agent = r?.config?.providers?.[0]?.config;
   const judge = r?.config?.defaultTest?.options?.provider;
@@ -668,7 +668,7 @@ function isLive(live: Set<string> | undefined, e: { skill: string; scenario: str
   return live === undefined || live.has(`${e.skill}\0${e.scenario}`);
 }
 
-function discoverScenarios(root: string): string[] {
+function discoverScenarios(root: string): Array<string> {
   const roots = [path.join(root, "skills")];
   const cliDir = path.join(root, "cli");
   if (fs.existsSync(cliDir)) {
@@ -678,7 +678,7 @@ function discoverScenarios(root: string): string[] {
       }
     }
   }
-  const found: string[] = [];
+  const found: Array<string> = [];
   for (const dir of roots) {
     if (!fs.existsSync(dir)) {
       continue;
@@ -717,7 +717,7 @@ function warnHostRun(): void {
   );
 }
 
-function cmdRun(argv: string[]): void {
+function cmdRun(argv: Array<string>): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length !== 1) {
     fail(`usage: skillcheck run <scenario-dir> ${RUN_FLAGS}`);
@@ -736,7 +736,7 @@ function cmdRun(argv: string[]): void {
   process.exit(o.stats.pass ? 0 : 1);
 }
 
-function cmdSweep(argv: string[]): void {
+function cmdSweep(argv: Array<string>): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) {
     fail(`usage: skillcheck sweep ${RUN_FLAGS} [--all]`);
@@ -871,13 +871,13 @@ export function reduceResults(
   live?: Set<string>,
 ): {
   treeSha: string;
-  entries: ScorecardEntry[];
-  skipped: string[];
+  entries: Array<ScorecardEntry>;
+  skipped: Array<string>;
   gradedAt: Map<string, number>;
   retired: Set<string>;
 } {
-  const entries: ScorecardEntry[] = [];
-  const skipped: string[] = [];
+  const entries: Array<ScorecardEntry> = [];
+  const skipped: Array<string> = [];
   const retired = new Set<string>();
   const gradedAt = new Map<string, number>();
   const shas = new Set<string>();
@@ -924,8 +924,9 @@ export function reduceResults(
       skipped.push(f);
       continue;
     }
-    const rows = (raw as { results: { results: { latencyMs?: number; tokenUsage?: Usage }[] } })
-      .results.results;
+    const rows = (
+      raw as { results: { results: Array<{ latencyMs?: number; tokenUsage?: Usage }> } }
+    ).results.results;
     const key = entryKey({ skill, scenario, harness, variant });
     gradedAt.set(key, Math.max(gradedAt.get(key) ?? 0, fs.statSync(path.join(dir, f)).mtimeMs));
     // Missing or malformed sidecars are unattested.
@@ -966,9 +967,9 @@ function entryKey(e: Pick<ScorecardEntry, "skill" | "scenario" | "harness" | "va
 // a committed same-date scorecard with a fraction of its entries. Merge instead:
 // fresh entries win, untouched ones survive.
 export function mergeScorecard(
-  existing: ScorecardEntry[],
-  fresh: ScorecardEntry[],
-): { entries: ScorecardEntry[]; carried: number } {
+  existing: Array<ScorecardEntry>,
+  fresh: Array<ScorecardEntry>,
+): { entries: Array<ScorecardEntry>; carried: number } {
   const byKey = new Map<string, ScorecardEntry>();
   for (const e of existing) {
     byKey.set(entryKey(e), e);
@@ -986,14 +987,14 @@ export function mergeScorecard(
   return { entries, carried };
 }
 
-export function treeShaOf(entries: ScorecardEntry[]): string {
+export function treeShaOf(entries: Array<ScorecardEntry>): string {
   const shas = new Set(entries.map((e) => e.skills_tree_sha));
   return shas.size === 1 ? [...shas][0] : shas.size === 0 ? "none" : "mixed";
 }
 
 // Reads a scorecard that is about to be merged into. A same-date file that
 // cannot be understood is a stop, not a licence to overwrite it.
-function readExistingScorecard(out: string): ScorecardEntry[] {
+function readExistingScorecard(out: string): Array<ScorecardEntry> {
   if (!fs.existsSync(out)) {
     return [];
   }
@@ -1007,10 +1008,10 @@ function readExistingScorecard(out: string): ScorecardEntry[] {
   if (!Array.isArray(scenarios)) {
     throw new Error(`existing scorecard ${out} has no scenarios array; refusing to overwrite it`);
   }
-  return scenarios as ScorecardEntry[];
+  return scenarios as Array<ScorecardEntry>;
 }
 
-function cmdSummarize(argv: string[]): void {
+function cmdSummarize(argv: Array<string>): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 0) {
     fail("usage: skillcheck summarize [--root DIR] [--allow-mixed]");
@@ -1101,17 +1102,17 @@ export interface SkillSummary {
   pass_all: number; // scenarios whose every trial passed
   pass_rate: number; // mean over scenarios
   score: number; // mean over scenarios
-  noisy: string[];
+  noisy: Array<string>;
   // Over scenarios that also have a control row; null without any.
   control_score: number | null;
   lift: number | null; // skill score minus control score on those scenarios
-  no_lift: string[]; // scenarios whose control passed every trial
+  no_lift: Array<string>; // scenarios whose control passed every trial
 }
 
 // Scenarios weigh equally; rows from an older scorecard without trial fields
 // count as one trial.
-export function summarizeSkills(entries: ScorecardEntry[]): SkillSummary[] {
-  const groups = new Map<string, ScorecardEntry[]>();
+export function summarizeSkills(entries: Array<ScorecardEntry>): Array<SkillSummary> {
+  const groups = new Map<string, Array<ScorecardEntry>>();
   const controls = new Map<string, ScorecardEntry>();
   for (const e of entries) {
     const key = `${e.skill}\0${e.harness}`;
@@ -1121,7 +1122,7 @@ export function summarizeSkills(entries: ScorecardEntry[]): SkillSummary[] {
       groups.set(key, [...(groups.get(key) ?? []), e]);
     }
   }
-  const mean = (xs: number[]) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
+  const mean = (xs: Array<number>) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
   return [...groups.entries()].map(([key, rows]) => {
     const paired = rows.flatMap((r) => {
       const c = controls.get(`${key}\0${r.scenario}`);
@@ -1146,7 +1147,7 @@ export function summarizeSkills(entries: ScorecardEntry[]): SkillSummary[] {
   });
 }
 
-function formatSkillTable(rows: SkillSummary[]): string {
+function formatSkillTable(rows: Array<SkillSummary>): string {
   const table = [
     ["skill", "harness", "scenarios", "pass^k", "pass rate", "score", "noisy", "control", "lift"],
     ...rows.map((r) => [
@@ -1172,7 +1173,7 @@ function formatSkillTable(rows: SkillSummary[]): string {
     .join("\n");
 }
 
-function cmdLint(argv: string[]): void {
+function cmdLint(argv: Array<string>): void {
   const { positional, flags } = parseArgs(argv);
   if (positional.length > 1) {
     fail("usage: skillcheck lint [<root>] [--root DIR]");

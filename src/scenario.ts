@@ -24,8 +24,8 @@ export interface Criteria {
   skill_use?: "required" | "optional" | "forbidden";
   // Other skills under the root installed beside it, so the agent has to
   // route between them; "all" installs every model-invocable skill.
-  install?: string[] | "all";
-  checklist: ChecklistItem[];
+  install?: Array<string> | "all";
+  checklist: Array<ChecklistItem>;
 }
 
 export interface Scenario {
@@ -33,10 +33,10 @@ export interface Scenario {
   scenario: string;
   name: string; // "<skill>--<scenario>"
   skillDir: string;
-  alternatives: string[]; // criteria.install, resolved
+  alternatives: Array<string>; // criteria.install, resolved
   prompt: string;
   task: string; // the prompt without the hidden-skill invocation
-  files: { name: string; content: string }[];
+  files: Array<{ name: string; content: string }>;
   criteria: Criteria;
 }
 
@@ -82,7 +82,7 @@ export function loadScenario(scenarioDir: string): Scenario {
   const taskMd = fs.readFileSync(path.join(scenarioDir, "task.md"), "utf8");
   const skillDir = path.resolve(scenarioDir, "../..");
   const hidden = isHiddenSkill(fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"));
-  let parsed: { criteria: Criteria; alternatives: string[] };
+  let parsed: { criteria: Criteria; alternatives: Array<string> };
   try {
     parsed = parseCriteria(scenarioDir, hidden);
   } catch (err) {
@@ -119,7 +119,7 @@ export function loadScenario(scenarioDir: string): Scenario {
 export function parseCriteria(
   scenarioDir: string,
   hidden: boolean,
-): { criteria: Criteria; alternatives: string[] } {
+): { criteria: Criteria; alternatives: Array<string> } {
   const text = fs.readFileSync(path.join(scenarioDir, "criteria.json"), "utf8");
   let criteria: Criteria;
   try {
@@ -166,7 +166,7 @@ export function parseCriteria(
 // alias the skill under test, whose installed copy would then carry its evals,
 // or pull a file from outside the root. A hidden skill only loads on an
 // explicit invocation in production, so it is never an alternative.
-function resolveInstall(skillDir: string, install: Criteria["install"]): string[] {
+function resolveInstall(skillDir: string, install: Criteria["install"]): Array<string> {
   if (install === undefined) {
     return [];
   }
@@ -292,7 +292,7 @@ const MARKDOWN_LINK = /\]\(\s*<([^>]+)>|\]\(\s*([^)\s]+)|^ {0,3}\[[^\]]+\]:\s*<?
 
 // Skills under the same root that the skill's Markdown links to, followed
 // transitively, excluding the skill itself and anything under evals/.
-export function linkedSiblings(skillDir: string): string[] {
+export function linkedSiblings(skillDir: string): Array<string> {
   const skillsRoot = path.dirname(skillDir);
   const realRoot = fs.realpathSync(skillsRoot);
   const realSelf = fs.realpathSync(skillDir);
@@ -330,8 +330,8 @@ export function linkedSiblings(skillDir: string): string[] {
   return [...found].sort();
 }
 
-function skillMarkdown(dir: string): string[] {
-  const out: string[] = [];
+function skillMarkdown(dir: string): Array<string> {
+  const out: Array<string> = [];
   const walk = (d: string): void => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
@@ -472,7 +472,7 @@ export function materialize(
 function agentProvider(
   opts: RunOptions,
   workdir: string,
-  skills: string[],
+  skills: Array<string>,
   paths: RunPaths,
 ): object {
   const [skill] = skills;
@@ -549,7 +549,7 @@ export function trialLabel(index: number): string {
 
 export function buildConfig(
   s: Scenario,
-  trials: TrialDir[],
+  trials: Array<TrialDir>,
   opts: RunOptions,
   paths: RunPaths,
 ): object {
@@ -692,7 +692,7 @@ export function resolvePackageDir(pkg: string): string | undefined {
 // claude agent leg and for the SDK judge (a bare judge model with no
 // ANTHROPIC_API_KEY grades through the agent SDK, see buildConfig); the codex
 // SDK for the codex agent leg.
-export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean): string[] {
+export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean): Array<string> {
   const pkgs = ["promptfoo"];
   const sdkJudge = !opts.judgeModel.includes(":") && !hasAnthropicKey;
   if (opts.harness === "claude" || sdkJudge) {
@@ -740,7 +740,7 @@ export function privateHome(dir: string): void {
 // unprivileged user named by SKILLCHECK_AGENT_UID (container/agent-wrapper.sh).
 // The agent owns only its workdirs and the run's homes; directories on the way
 // are traverse-only, and the config and manifests stay root-only.
-export function handOverToAgent(runDir: string, trials: TrialDir[]): void {
+export function handOverToAgent(runDir: string, trials: Array<TrialDir>): void {
   const uid = Number(process.env.SKILLCHECK_AGENT_UID);
   const gid = Number(process.env.SKILLCHECK_AGENT_GID ?? process.env.SKILLCHECK_AGENT_UID);
   if (!Number.isInteger(uid) || !Number.isInteger(gid)) {

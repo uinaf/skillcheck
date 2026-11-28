@@ -34,7 +34,7 @@ function tmp(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `skillcheck-${prefix}-`));
 }
 
-function runCli(args: string[], env?: NodeJS.ProcessEnv) {
+function runCli(args: Array<string>, env?: NodeJS.ProcessEnv) {
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     env: { ...process.env, ...env },
@@ -279,7 +279,7 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
 });
 
 test("runOptions: --trials defaults to 1, --agent-effort is claude-only and validated", () => {
-  const opts = (argv: string[]) => runOptions(parseArgs(argv).flags);
+  const opts = (argv: Array<string>) => runOptions(parseArgs(argv).flags);
   assert.equal(opts([]).trials, 1);
   assert.equal(opts(["--trials", "3"]).trials, 3);
   assert.throws(() => opts(["--trials", "0"]), /--trials must be a positive integer/);
@@ -380,7 +380,7 @@ process.exit(1);
     .readFileSync(log, "utf8")
     .trim()
     .split("\n")
-    .map((l) => JSON.parse(l) as { argv: string[]; cwd: string });
+    .map((l) => JSON.parse(l) as { argv: Array<string>; cwd: string });
   return { calls, config, result: JSON.parse(fs.readFileSync(out, "utf8")) };
 }
 
@@ -540,7 +540,7 @@ cp.spawnSync = (command, args, options) => spawn(command, [${JSON.stringify(fake
 syncBuiltinESMExports();
 `,
     );
-    const sweep = (...args: string[]) =>
+    const sweep = (...args: Array<string>) =>
       spawnSync(process.execPath, ["--import", preload, cli, "sweep", "--root", root, ...args], {
         encoding: "utf8",
       });

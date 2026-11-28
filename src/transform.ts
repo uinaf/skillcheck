@@ -50,7 +50,7 @@ export default function transform(output: string, context: TransformContext): st
   const manifest: Record<string, string> = JSON.parse(
     fs.readFileSync(context.vars.manifest, "utf8"),
   );
-  const sections: { rel: string; text: string }[] = [];
+  const sections: Array<{ rel: string; text: string }> = [];
   const visited = new Set<string>();
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

@@ -644,7 +644,7 @@ test("treeShaOf: uniform, mixed, and empty", () => {
   assert.equal(treeShaOf([]), "none");
 });
 
-function seedScorecards(dir: string, original: string): string[] {
+function seedScorecards(dir: string, original: string): Array<string> {
   const now = Date.now();
   const paths = [now, now + 86_400_000].map((time) =>
     path.join(dir, `${new Date(time).toISOString().slice(0, 10)}.json`),
@@ -722,7 +722,7 @@ if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.
 process.exit(mode.startsWith("nonzero") ? 1 : 0);
 `,
         );
-      const invoke = (args: string[]) =>
+      const invoke = (args: Array<string>) =>
         spawnSync(process.execPath, ["--import", preload, cli, ...args, "--root", root], {
           encoding: "utf8",
         });
@@ -1019,7 +1019,7 @@ test("resolvePackageDir: installed peers resolve, absent packages are undefined"
   assert.equal(resolvePackageDir("@uinaf/no-such-package-ever"), undefined);
 });
 
-function runCli(args: string[], cwd?: string): { rc: number; stdout: string; stderr: string } {
+function runCli(args: Array<string>, cwd?: string): { rc: number; stdout: string; stderr: string } {
   const r = spawnSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8" });
   return { rc: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
 }
