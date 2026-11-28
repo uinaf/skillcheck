@@ -102,7 +102,7 @@ function isGrokEvent(value: unknown): value is GrokEvent {
   return value.total_cost_usd === undefined || nonnegativeNumber(value.total_cost_usd);
 }
 
-const STDERR_CAP = 4_000;
+const STDERR_CAP = 4000;
 const OUTPUT_CAP = 1_000_000;
 
 function within(root: string, file: string): boolean {

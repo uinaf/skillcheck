@@ -157,7 +157,7 @@ for (const stdio of ["ignore", "inherit"] as const) {
           working_dir: fixtureRun.dir,
           skill: "signal",
           command: fixtureRun.command,
-          timeout_ms: 1_000,
+          timeout_ms: 1000,
         },
       }).callApi("task");
 
@@ -217,7 +217,7 @@ for (const event of [
           working_dir: fixtureRun.dir,
           skill: "signal",
           command: fixtureRun.command,
-          timeout_ms: 1_000,
+          timeout_ms: 1000,
         },
       }).callApi("task");
 

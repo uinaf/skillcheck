@@ -21,7 +21,7 @@ function safeSlice(text: string, end: number): string {
   let cut = text.slice(0, end);
   const last = cut.charCodeAt(cut.length - 1);
 
-  if (last >= 0xd800 && last <= 0xdbff) {
+  if (last >= 0xd8_00 && last <= 0xdb_ff) {
     cut = cut.slice(0, -1);
   }
 

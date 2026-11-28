@@ -120,7 +120,6 @@ export default defineConfig({
       "uinaf/no-comments": "off",
       "quality/no-known-value-widening": "off",
       "unicorn/prefer-import-meta-properties": "off",
-      "unicorn/numeric-separators-style": "off",
       "unicorn/catch-error-name": "off",
       "no-promise-executor-return": "off",
       "unicorn/prefer-string-replace-all": "off",
