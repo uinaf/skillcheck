@@ -590,18 +590,18 @@ test("classifyResult: a graded fail carrying the threshold reason is FAIL, not E
   assert.match(errorOf(classifyResult(noStats)), /provider blew up/);
 });
 
-test("classifyResult: graded verdicts still pass through untouched", () => {
-  const result = (score: number, success: boolean) => ({
-    results: {
-      results: [graded(score, success)],
-      stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 },
-    },
-  });
+const gradedRun = (score: number, success: boolean) => ({
+  results: {
+    results: [graded(score, success)],
+    stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 },
+  },
+});
 
-  assert.deepEqual(classifyResult(result(0.91, true)), {
+test("classifyResult: graded verdicts still pass through untouched", () => {
+  assert.deepEqual(classifyResult(gradedRun(0.91, true)), {
     trials: [{ score: 0.91, pass: true, skillUsed: true }],
   });
-  assert.deepEqual(classifyResult(result(0, false)), {
+  assert.deepEqual(classifyResult(gradedRun(0, false)), {
     trials: [{ score: 0, pass: false, skillUsed: true }],
   });
 });
@@ -1056,25 +1056,28 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
   assert.ok(fs.existsSync(path.join(dir, "@openai", "codex-sdk", "package.json")));
 });
 
-test("requiredEvalPackages: per-harness peers, judge leg included", () => {
-  const opts = (harness: "claude" | "codex" | "grok", judgeModel = "claude-opus-5") => ({
-    harness,
-    judgeModel,
-  });
+const evalOpts = (harness: "claude" | "codex" | "grok", judgeModel = "claude-opus-5") => ({
+  harness,
+  judgeModel,
+});
 
+test("requiredEvalPackages: per-harness peers, judge leg included", () => {
   // The claude agent leg always needs the agent SDK.
-  assert.deepEqual(requiredEvalPackages(opts("claude"), true), [
+  assert.deepEqual(requiredEvalPackages(evalOpts("claude"), true), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
   ]);
   // A bare judge without ANTHROPIC_API_KEY grades through the agent SDK.
-  assert.deepEqual(requiredEvalPackages(opts("codex"), false), [
+  assert.deepEqual(requiredEvalPackages(evalOpts("codex"), false), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
     "@openai/codex-sdk",
   ]);
-  assert.deepEqual(requiredEvalPackages(opts("codex"), true), ["promptfoo", "@openai/codex-sdk"]);
-  assert.deepEqual(requiredEvalPackages(opts("grok"), true), ["promptfoo"]);
+  assert.deepEqual(requiredEvalPackages(evalOpts("codex"), true), [
+    "promptfoo",
+    "@openai/codex-sdk",
+  ]);
+  assert.deepEqual(requiredEvalPackages(evalOpts("grok"), true), ["promptfoo"]);
 });
 
 test("resolvePackageDir: installed peers resolve, absent packages are undefined", () => {

@@ -217,10 +217,10 @@ function configKey(c: Partial<RunConfig>): string {
   ]);
 }
 
-function describeConfig(c: Partial<RunConfig>): string {
-  const effort = (e: string | null | undefined) => (e ? `@${e}` : "");
+const effortSuffix = (e: string | null | undefined) => (e ? `@${e}` : "");
 
-  return `agent ${c.agent_model}${effort(c.agent_effort)}, judge ${c.judge_model}${effort(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}, ${c.isolated ? "isolated" : "host"}`;
+function describeConfig(c: Partial<RunConfig>): string {
+  return `agent ${c.agent_model}${effortSuffix(c.agent_effort)}, judge ${c.judge_model}${effortSuffix(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}, ${c.isolated ? "isolated" : "host"}`;
 }
 
 // Throws when rows of one harness were measured with different configurations.
@@ -905,6 +905,20 @@ export type Variant = "skill" | "control";
 
 type Identity = Pick<ScorecardEntry, "skill" | "scenario" | "harness"> & { variant: Variant };
 
+const decodePart = (part: string): string => {
+  if (!part.startsWith("~v2~")) {
+    return part;
+  }
+
+  try {
+    const decoded = decodeURIComponent(part.slice(4));
+
+    return encodeRunNamePart(decoded) === part ? decoded : part;
+  } catch {
+    return part;
+  }
+};
+
 function resultIdentity(file: string, dir: string): Identity {
   const base = file.replace(/\.json$/, "");
 
@@ -940,20 +954,6 @@ function resultIdentity(file: string, dir: string): Identity {
     throw new Error(`missing identity metadata for ${file}`);
   }
 
-  const decode = (part: string): string => {
-    if (!part.startsWith("~v2~")) {
-      return part;
-    }
-
-    try {
-      const decoded = decodeURIComponent(part.slice(4));
-
-      return encodeRunNamePart(decoded) === part ? decoded : part;
-    } catch {
-      return part;
-    }
-  };
-
   // Escaped parts never contain "--", so a trailing --control after at least
   // skill--scenario is the control suffix, not part of a name.
   const unsuffixed = base.replace(/--control$/, "");
@@ -966,7 +966,7 @@ function resultIdentity(file: string, dir: string): Identity {
 
   const [skill, ...rest] = stem.replace(/--(codex|grok|cursor)$/, "").split("--");
 
-  return { skill: decode(skill), scenario: decode(rest.join("--")), harness, variant };
+  return { skill: decodePart(skill), scenario: decodePart(rest.join("--")), harness, variant };
 }
 
 interface Usage {
@@ -1272,6 +1272,8 @@ export interface SkillSummary {
 
 // Scenarios weigh equally; rows from an older scorecard without trial fields
 // count as one trial.
+const mean4 = (xs: Array<number>) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
+
 export function summarizeSkills(entries: Array<ScorecardEntry>): Array<SkillSummary> {
   const groups = new Map<string, Array<ScorecardEntry>>();
   const controls = new Map<string, ScorecardEntry>();
@@ -1286,8 +1288,6 @@ export function summarizeSkills(entries: Array<ScorecardEntry>): Array<SkillSumm
     }
   }
 
-  const mean = (xs: Array<number>) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
-
   return [...groups.entries()].map(([key, rows]) => {
     const paired = rows.flatMap((r) => {
       const c = controls.get(`${key}\0${r.scenario}`);
@@ -1295,21 +1295,21 @@ export function summarizeSkills(entries: Array<ScorecardEntry>): Array<SkillSumm
       return c === undefined ? [] : [{ skill: r, control: c }];
     });
 
-    const controlScore = paired.length === 0 ? null : mean(paired.map((p) => p.control.score));
+    const controlScore = paired.length === 0 ? null : mean4(paired.map((p) => p.control.score));
 
     return {
       skill: rows[0].skill,
       harness: rows[0].harness,
       scenarios: rows.length,
       pass_all: rows.filter((r) => r.pass).length,
-      pass_rate: mean(rows.map((r) => r.pass_rate ?? (r.pass ? 1 : 0))),
-      score: mean(rows.map((r) => r.score)),
+      pass_rate: mean4(rows.map((r) => r.pass_rate ?? (r.pass ? 1 : 0))),
+      score: mean4(rows.map((r) => r.score)),
       noisy: rows.filter((r) => r.noisy).map((r) => r.scenario),
       control_score: controlScore,
       lift:
         controlScore === null
           ? null
-          : round4(mean(paired.map((p) => p.skill.score)) - controlScore),
+          : round4(mean4(paired.map((p) => p.skill.score)) - controlScore),
       no_lift: paired.filter((p) => p.control.pass).map((p) => p.skill.scenario),
     };
   });

@@ -103,16 +103,17 @@ test("aggregateTrials: pass^k, pass rate, mean, min, spread, skill-used rate", (
   });
 });
 
+const trialOf = (score: number, pass: boolean) => ({ score, pass, skillUsed: true });
+
 test("aggregateTrials: noise is a pass/fail mix or a spread of at least 0.2", () => {
-  const trial = (score: number, pass: boolean) => ({ score, pass, skillUsed: true });
-  assert.equal(aggregateTrials([trial(0.9, true), trial(0.95, true)]).noisy, false);
-  assert.equal(aggregateTrials([trial(0.72, true), trial(0.68, false)]).noisy, true);
-  assert.equal(aggregateTrials([trial(0.5, false), trial(0.7, false)]).noisy, true);
-  assert.equal(aggregateTrials([trial(0.5, false), trial(0.69, false)]).noisy, false);
+  assert.equal(aggregateTrials([trialOf(0.9, true), trialOf(0.95, true)]).noisy, false);
+  assert.equal(aggregateTrials([trialOf(0.72, true), trialOf(0.68, false)]).noisy, true);
+  assert.equal(aggregateTrials([trialOf(0.5, false), trialOf(0.7, false)]).noisy, true);
+  assert.equal(aggregateTrials([trialOf(0.5, false), trialOf(0.69, false)]).noisy, false);
   // The threshold applies to the exact spread, not the stored rounding.
-  assert.equal(aggregateTrials([trial(0.5, false), trial(0.69996, false)]).noisy, false);
-  assert.equal(aggregateTrials([trial(0.1, false)]).noisy, false);
-  const stable = aggregateTrials([trial(0.9, true), trial(0.9, true), trial(0.9, true)]);
+  assert.equal(aggregateTrials([trialOf(0.5, false), trialOf(0.69996, false)]).noisy, false);
+  assert.equal(aggregateTrials([trialOf(0.1, false)]).noisy, false);
+  const stable = aggregateTrials([trialOf(0.9, true), trialOf(0.9, true), trialOf(0.9, true)]);
   assert.equal(stable.pass, true);
   assert.equal(stable.score_spread, 0);
   assert.throws(() => aggregateTrials([]), /zero trials/);
@@ -287,18 +288,19 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
   );
 });
 
+const runOpts = (argv: Array<string>) => runOptions(parseArgs(argv).flags);
+
 test("runOptions: --trials defaults to 1, --agent-effort is claude-only and validated", () => {
-  const opts = (argv: Array<string>) => runOptions(parseArgs(argv).flags);
-  assert.equal(opts([]).trials, 1);
-  assert.equal(opts(["--trials", "3"]).trials, 3);
-  assert.throws(() => opts(["--trials", "0"]), /--trials must be a positive integer/);
-  assert.equal(opts(["--agent-effort", "medium"]).agentEffort, "medium");
-  assert.equal(opts([]).agentEffort, undefined);
-  assert.throws(() => opts(["--agent-effort", "extreme"]), /--agent-effort must be low, medium/);
+  assert.equal(runOpts([]).trials, 1);
+  assert.equal(runOpts(["--trials", "3"]).trials, 3);
+  assert.throws(() => runOpts(["--trials", "0"]), /--trials must be a positive integer/);
+  assert.equal(runOpts(["--agent-effort", "medium"]).agentEffort, "medium");
+  assert.equal(runOpts([]).agentEffort, undefined);
+  assert.throws(() => runOpts(["--agent-effort", "extreme"]), /--agent-effort must be low, medium/);
 
   for (const harness of ["codex", "grok"]) {
     assert.throws(
-      () => opts(["--harness", harness, "--agent-effort", "low"]),
+      () => runOpts(["--harness", harness, "--agent-effort", "low"]),
       new RegExp(`--agent-effort is only supported with --harness claude; ${harness}`),
     );
   }
@@ -672,6 +674,10 @@ test("reduceResults: a Claude judge's effort is recovered from the result config
   }
 });
 
+const readCall = (file_path: string, is_error: boolean | undefined = false, output = "---") => ({
+  toolCalls: [{ name: "Read", input: { file_path }, is_error, output }],
+});
+
 test("skill evidence: a skill call or a read of the installed SKILL.md", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
   const dir = tmp("evidence");
@@ -686,19 +692,15 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
     const check = (metadata: object, required = true) =>
       assertSkillUsed("", { vars: { workdir }, config: { skill: "demo", required }, metadata });
 
-    const read = (file_path: string, is_error: boolean | undefined = false, output = "---") => ({
-      toolCalls: [{ name: "Read", input: { file_path }, is_error, output }],
-    });
-
     assert.deepEqual(check({ skillCalls: [{ name: "demo" }] }), {
       pass: true,
       score: 1,
       reason: "skill used: skill call demo",
     });
     const installed = path.join(workdir, ".claude", "skills", "demo", "SKILL.md");
-    assert.equal(check(read(installed)).pass, true);
-    assert.equal(check(read(".claude/skills/demo/SKILL.md")).pass, true, "relative to workdir");
-    assert.equal(check(read(installed, true)).pass, false, "a failed read is no evidence");
+    assert.equal(check(readCall(installed)).pass, true);
+    assert.equal(check(readCall(".claude/skills/demo/SKILL.md")).pass, true, "relative to workdir");
+    assert.equal(check(readCall(installed, true)).pass, false, "a failed read is no evidence");
     assert.equal(
       check({ toolCalls: [{ name: "Read", input: { file_path: installed } }] }).pass,
       false,
@@ -716,13 +718,13 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
       assertSkillUsed("", {
         vars: { workdir: linked },
         config: { skill: "demo", required: true },
-        metadata: read(file_path),
+        metadata: readCall(file_path),
       }).pass;
 
     assert.equal(viaLink(source), false);
     assert.equal(viaLink(".claude/skills/demo/SKILL.md"), true);
     assert.equal(
-      check(read(path.join(dir, "source", "demo", "SKILL.md"))).pass,
+      check(readCall(path.join(dir, "source", "demo", "SKILL.md"))).pass,
       false,
       "the skill's source outside the workdir is not the installed copy",
     );
@@ -734,7 +736,7 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
       score: 0,
       reason: "skill demo not loaded (optional for this scenario)",
     });
-    assert.deepEqual(check(read(installed), false).score, 1);
+    assert.deepEqual(check(readCall(installed), false).score, 1);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -829,6 +831,8 @@ test("skill evidence: metadata is also read from providerResponse", async () => 
   assert.equal(result.pass, true);
 });
 
+const parseJsonFile = (p: string) => JSON.parse(fs.readFileSync(p, "utf8"));
+
 test("control: installs no skill, drops the hidden invocation, never requires skill use", () => {
   const dir = tmp("control");
 
@@ -857,9 +861,8 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
     assert.equal(withSkill.name, "demo--basic");
     assert.equal(control.name, "demo--basic--control");
 
-    const read = (p: string) => JSON.parse(fs.readFileSync(p, "utf8"));
-    const skillConfig = read(withSkill.configPath);
-    const controlConfig = read(control.configPath);
+    const skillConfig = parseJsonFile(withSkill.configPath);
+    const controlConfig = parseJsonFile(control.configPath);
     const workdir = controlConfig.providers[0].config.working_dir;
     assert.equal(fs.existsSync(path.join(workdir, ".claude")), false);
     assert.ok(fs.existsSync(path.join(workdir, "note.md")));
@@ -877,7 +880,7 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
     for (const harness of ["codex", "grok"] as const) {
       const c = generateRun(scenarioDir, { ...base, harness, control: true }, paths);
       assert.equal(c.name, `demo--basic--${harness}--control`);
-      const wd = read(c.configPath).providers[0].config.working_dir;
+      const wd = parseJsonFile(c.configPath).providers[0].config.working_dir;
 
       for (const root of [".claude", ".agents", ".grok"]) {
         assert.equal(fs.existsSync(path.join(wd, root)), false, `${harness} ${root}`);
@@ -1534,38 +1537,38 @@ test("skill evidence: a Codex command that printed SKILL.md counts even when it 
   }
 });
 
-test("classifyResult: a failed judge call errors the trial instead of scoring it", () => {
-  const row = (graderError: boolean) => ({
-    score: 0.5,
-    success: false,
-    failureReason: 1,
-    gradingResult: {
-      componentResults: [
-        {
-          score: 0,
-          pass: false,
-          metadata: { assertionSet: { type: "assert-set" } },
-          componentResults: [
-            {
-              score: 0,
-              pass: false,
-              reason: graderError
-                ? "Error calling Claude Agent SDK: Native CLI binary for linux-arm64 not found."
-                : "The plan merges before review.",
-              ...(graderError ? { metadata: { graderError: true } } : {}),
-            },
-          ],
-        },
-        { score: 1, pass: true, assertion: { type: "javascript", metric: "skill-used" } },
-      ],
-    },
-  });
+const judgeRow = (graderError: boolean) => ({
+  score: 0.5,
+  success: false,
+  failureReason: 1,
+  gradingResult: {
+    componentResults: [
+      {
+        score: 0,
+        pass: false,
+        metadata: { assertionSet: { type: "assert-set" } },
+        componentResults: [
+          {
+            score: 0,
+            pass: false,
+            reason: graderError
+              ? "Error calling Claude Agent SDK: Native CLI binary for linux-arm64 not found."
+              : "The plan merges before review.",
+            ...(graderError ? { metadata: { graderError: true } } : {}),
+          },
+        ],
+      },
+      { score: 1, pass: true, assertion: { type: "javascript", metric: "skill-used" } },
+    ],
+  },
+});
 
-  assert.deepEqual(classifyResult({ results: { results: [row(true)] } }), {
+test("classifyResult: a failed judge call errors the trial instead of scoring it", () => {
+  assert.deepEqual(classifyResult({ results: { results: [judgeRow(true)] } }), {
     error:
       "judge call failed: Error calling Claude Agent SDK: Native CLI binary for linux-arm64 not found.",
   });
-  assert.deepEqual(classifyResult({ results: { results: [row(false)] } }), {
+  assert.deepEqual(classifyResult({ results: { results: [judgeRow(false)] } }), {
     trials: [{ score: 0, pass: false, skillUsed: true }],
   });
 });

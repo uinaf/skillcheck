@@ -35,6 +35,9 @@ function real(file: string): string | undefined {
   }
 }
 
+const callList = (value: unknown): Array<Call> =>
+  Array.isArray(value) ? value.filter((c): c is Call => c !== null && typeof c === "object") : [];
+
 export function skillEvidence(context: EvidenceContext): string | undefined {
   const skill = context.config?.skill;
   const workdir = context.vars.workdir;
@@ -43,13 +46,10 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     return undefined;
   }
 
-  const calls = (value: unknown): Array<Call> =>
-    Array.isArray(value) ? value.filter((c): c is Call => c !== null && typeof c === "object") : [];
-
   // context.metadata is promptfoo's shortcut for providerResponse.metadata.
   const metadata = context.metadata ?? context.providerResponse?.metadata;
 
-  const skillCall = calls(metadata?.skillCalls).find(
+  const skillCall = callList(metadata?.skillCalls).find(
     (c) => c.name === skill && c.is_error !== true,
   );
 
@@ -70,7 +70,7 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   // back to the skill's source, which is not what the agent was handed.
   const root = real(workdir) ?? workdir;
 
-  const read = calls(metadata?.toolCalls).find((c) => {
+  const read = callList(metadata?.toolCalls).find((c) => {
     if (c.name !== "Read" || c.is_error !== false || typeof c.output !== "string") {
       return false;
     }
@@ -108,7 +108,7 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     return t.length >= 40 ? [t] : [];
   });
 
-  const shown = calls(metadata?.toolCalls).find(
+  const shown = callList(metadata?.toolCalls).find(
     (c) =>
       c.name === "Bash" &&
       c.is_error === false &&

@@ -112,7 +112,6 @@ export default defineConfig({
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
-      "unicorn/consistent-function-scoping": "off",
       "anti-slop/no-runtime-typeof": "off",
       "anti-slop/no-unknown-parameters": "off",
       "anti-slop/require-safety-comment-for-type-assertion": "off",
