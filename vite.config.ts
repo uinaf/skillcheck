@@ -115,7 +115,6 @@ export default defineConfig({
       "anti-slop/no-runtime-typeof": "off",
       "anti-slop/no-unknown-parameters": "off",
       "anti-slop/require-safety-comment-for-type-assertion": "off",
-      "uinaf/no-comments": "off",
       "quality/no-known-value-widening": "off",
       "quality/no-conditional-empty-object-spread": "off",
       "quality/no-unsafe-dictionary-type": "off",

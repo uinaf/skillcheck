@@ -111,6 +111,16 @@ function within(root: string, file: string): boolean {
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
+function attempt(action: () => void): boolean {
+  try {
+    action();
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default class GrokProvider {
   private readonly config: GrokConfig;
 
@@ -183,15 +193,15 @@ export default class GrokProvider {
         error ??= reason;
 
         if (child.pid !== undefined) {
-          try {
+          const pid = child.pid;
+
+          attempt(() => {
             if (process.platform === "win32") {
               child.kill();
             } else {
-              process.kill(-child.pid, "SIGKILL");
+              process.kill(-pid, "SIGKILL");
             }
-          } catch {
-            // The process may already have exited.
-          }
+          });
         }
       };
 
@@ -245,8 +255,6 @@ export default class GrokProvider {
         }
       };
 
-      // Decode on the stream so a multibyte character split across chunks
-      // survives intact.
       child.stdout?.setEncoding("utf8");
       child.stderr?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
@@ -281,13 +289,10 @@ export default class GrokProvider {
       }
 
       child.on("exit", () => {
-        // The CLI may exit while helpers remain in its detached process group.
         if (process.platform !== "win32" && child.pid !== undefined) {
-          try {
-            process.kill(-child.pid, "SIGKILL");
-          } catch {
-            // The process group has already exited.
-          }
+          const pid = child.pid;
+
+          attempt(() => process.kill(-pid, "SIGKILL"));
         }
       });
       child.on("close", (code, signal) => {

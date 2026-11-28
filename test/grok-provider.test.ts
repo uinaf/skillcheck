@@ -120,7 +120,6 @@ test("Grok provider keeps a multibyte character split across stdout chunks", asy
   const fixtureRun = fixture([]);
   const text = JSON.stringify({ type: "text", data: "café ☕" }) + "\n";
   const end = JSON.stringify({ type: "end", stopReason: "end_turn" }) + "\n";
-  // Split inside the three-byte "☕" and pause so the halves arrive as separate chunks.
   const split = Buffer.from(text).indexOf(Buffer.from("☕")) + 1;
   fs.writeFileSync(
     fixtureRun.command,
@@ -137,6 +136,16 @@ test("Grok provider keeps a multibyte character split across stdout chunks", asy
     fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
   }
 });
+
+const killQuietly = (pid: number): boolean => {
+  try {
+    process.kill(pid, "SIGKILL");
+
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 for (const stdio of ["ignore", "inherit"] as const) {
   test(`Grok provider stops helpers with ${stdio} stdio`, async () => {
@@ -180,11 +189,7 @@ for (const stdio of ["ignore", "inherit"] as const) {
       assert.equal(alive, false, "a successful run must not leave its helper alive");
     } finally {
       if (helperPid !== undefined) {
-        try {
-          process.kill(helperPid, "SIGKILL");
-        } catch {
-          // The provider already stopped it.
-        }
+        killQuietly(helperPid);
       }
 
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });

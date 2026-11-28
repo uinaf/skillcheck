@@ -9,8 +9,6 @@ export interface LintReport {
   count: number;
 }
 
-// Findings name paths relative to the linted root, so output reads the same
-// whether the tool runs from inside the repo or from an install elsewhere.
 function lintSkill(dir: string, root: string, errors: Array<string>): void {
   const skillMd = path.join(dir, "SKILL.md");
   const label = path.relative(root, skillMd);
@@ -38,8 +36,6 @@ function lintSkill(dir: string, root: string, errors: Array<string>): void {
     return;
   }
 
-  // Raw tokens are kept alongside unquoted values: scalar type matters
-  // (disable-model-invocation must be the bare YAML boolean, not "true").
   const fields = new Map<string, { raw: string; value: string }>();
 
   for (const line of lines.slice(1, close)) {
@@ -90,9 +86,6 @@ function lintSkill(dir: string, root: string, errors: Array<string>): void {
     );
   }
 
-  // Relative links in the body must resolve; external and anchor links pass.
-  // Code spans and fences are stripped first so example links never lint, and
-  // optional link titles ("...") are parsed rather than hiding the target.
   const body = lines
     .slice(close + 1)
     .join("\n")
@@ -128,7 +121,6 @@ export function lintSkills(root: string): LintReport {
     }
 
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      // Dot-dirs (.claude-plugin) are plugin metadata, not skill packages.
       if (!entry.isDirectory() || entry.name.startsWith(".")) {
         continue;
       }
@@ -143,11 +135,6 @@ export function lintSkills(root: string): LintReport {
   return { errors, count: skills.length };
 }
 
-// A task that names a skill tells the agent which skill applies, so routing is
-// no longer measured, and a no-skill control can go read the operator's
-// installed copy of it. Any skill in the root counts, not just the one under
-// test. Inline input files are repository state, where a CLI that shares its
-// skill's name legitimately appears, so only the prompt prose is checked.
 function lintEvals(skills: Array<string>, root: string, errors: Array<string>): void {
   const names = skills.map((dir) => path.basename(dir));
 
@@ -161,7 +148,6 @@ function lintEvals(skills: Array<string>, root: string, errors: Array<string>): 
     const skillMd = path.join(dir, "SKILL.md");
     const hidden = fs.existsSync(skillMd) && isHiddenSkill(fs.readFileSync(skillMd, "utf8"));
 
-    // Same enumeration as sweep's discovery, so dot-dirs are not skipped.
     for (const scenario of fs.readdirSync(evals, { withFileTypes: true })) {
       if (!scenario.isDirectory()) {
         continue;

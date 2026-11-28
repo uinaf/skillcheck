@@ -153,8 +153,6 @@ test("run names are unique across separator and harness boundaries", () => {
   }
 });
 
-// A graded promptfoo row for this harness's config: the checklist score and
-// the skill-used verdict live in their own components.
 function graded(score: number, success: boolean, extra: object = {}) {
   return {
     score,
@@ -273,7 +271,7 @@ test("long escaped run names remain within filename limits and retain identity",
 test("reduceResults: valid, malformed, and unattested results", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   writeResult(dir, "skillx--scen-a", 0.9, true, "sha1");
-  writeResult(dir, "skillx--scen-b--codex", 0.4, false); // no sidecar → unattested... but mixed with sha1
+  writeResult(dir, "skillx--scen-b--codex", 0.4, false);
   writeResult(dir, "skillx--scen-c--codex", 0.8, true, "sha1");
   writeResult(dir, "skillx--scen-d", 0.9, true, "sha1", "openai:chat:gpt-5.6-sol");
   writeResult(dir, "skillx--scen-e", 0.9, true, "sha1", {
@@ -533,7 +531,6 @@ function errorOf(v: Verdict): string {
 }
 
 test("classifyResult: an errored test is never a scored FAIL", () => {
-  // Shape promptfoo writes when the provider blows up: 0 pass / 0 fail / 1 error.
   const errored = {
     results: {
       results: [
@@ -569,8 +566,6 @@ test("classifyResult: stats-only errors, missing results, and unusable scores", 
 });
 
 test("classifyResult: a graded fail carrying the threshold reason is FAIL, not ERROR", () => {
-  // promptfoo puts a failed assert-set's reason in the error field even when
-  // its stats record a graded failure.
   const gradedFail = {
     results: {
       results: [graded(0.62, false, { error: "Aggregate score 0.62 < 0.7 threshold" })],
@@ -582,7 +577,6 @@ test("classifyResult: a graded fail carrying the threshold reason is FAIL, not E
     trials: [{ score: 0.62, pass: false, skillUsed: true }],
   });
 
-  // Without stats to attest the grading, error text still wins.
   const noStats = {
     results: { results: [{ score: 0, success: false, error: "provider blew up" }] },
   };
@@ -917,20 +911,16 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
   assert.equal(name, "demo--basic");
 
   const runDir = path.dirname(configPath);
-  // promptfoo resolves the provider SDK from the config's directory, which is
-  // in the consumer repo and has no node_modules of its own.
   const require = createRequire(path.join(runDir, "resolver.js"));
   assert.ok(
     require.resolve("@anthropic-ai/claude-agent-sdk"),
     "agent SDK must resolve from the scratch dir",
   );
   assert.ok(fs.lstatSync(path.join(runDir, "node_modules")).isSymbolicLink());
-  // codex-sdk exports no main entry, so its presence is checked by path.
   assert.ok(
     fs.existsSync(path.join(runDir, "node_modules", "@openai", "codex-sdk", "package.json")),
   );
 
-  // The link must not leak into the graded workdir or the manifest.
   assert.equal(fs.existsSync(path.join(runDir, "trial-1", "workdir", "node_modules")), false);
 
   const manifest = JSON.parse(
@@ -1050,8 +1040,6 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
   const dir = sdkNodeModulesDir();
   assert.ok(dir !== undefined);
   assert.equal(path.basename(dir), "node_modules");
-  // Both providers must be reachable through one link. codex-sdk has no
-  // resolvable main entry.
   assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk", "package.json")));
   assert.ok(fs.existsSync(path.join(dir, "@openai", "codex-sdk", "package.json")));
 });
@@ -1062,12 +1050,10 @@ const evalOpts = (harness: "claude" | "codex" | "grok", judgeModel = "claude-opu
 });
 
 test("requiredEvalPackages: per-harness peers, judge leg included", () => {
-  // The claude agent leg always needs the agent SDK.
   assert.deepEqual(requiredEvalPackages(evalOpts("claude"), true), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
   ]);
-  // A bare judge without ANTHROPIC_API_KEY grades through the agent SDK.
   assert.deepEqual(requiredEvalPackages(evalOpts("codex"), false), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
@@ -1112,7 +1098,6 @@ test("lint: broken fixture tree fails with each finding named", () => {
     /^skills\/wrongname\/evals\/\.dotted\/task\.md: task names skill wrongname$/m,
   );
   assert.match(r.stderr, /skill lint: 6 error\(s\) across 1 package\(s\)/);
-  // Every finding is named relative to the linted root, not by absolute path.
   const findings = r.stderr.trim().split("\n").slice(0, -1);
   assert.equal(findings.length, 6);
 
@@ -1195,7 +1180,6 @@ test("lint: a root with no skills tree lints nothing and passes", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// npm invokes installed bins through node_modules/.bin symlinks.
 for (const entry of ["src/cli.ts", "dist/cli.js"]) {
   test(`cli: invoked through a symlink, ${entry} still runs`, () => {
     const target = path.join(here, "..", entry);

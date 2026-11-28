@@ -1,8 +1,3 @@
-// promptfoo javascript assertion: did the agent load the skill under test?
-// Loaded by file URL, like the transform. Evidence is either a skill call the
-// provider reported, or a completed read of the installed SKILL.md inside the
-// scenario workdir: Claude Code often reads the file directly instead of going
-// through its Skill tool, and both put the same instructions in context.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -46,7 +41,6 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     return undefined;
   }
 
-  // context.metadata is promptfoo's shortcut for providerResponse.metadata.
   const metadata = context.metadata ?? context.providerResponse?.metadata;
 
   const skillCall = callList(metadata?.skillCalls).find(
@@ -65,9 +59,6 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     }),
   );
 
-  // A completed read carries is_error: false and its output. The named path
-  // must itself be inside the workdir: the installed copy may be a symlink
-  // back to the skill's source, which is not what the agent was handed.
   const root = real(workdir) ?? workdir;
 
   const read = callList(metadata?.toolCalls).find((c) => {
@@ -98,10 +89,6 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     return `read of the installed ${skill}/SKILL.md`;
   }
 
-  // Agents also print the file from a shell (`cd .claude/skills/x && cat
-  // SKILL.md`, or a loop over every file), which a path check cannot follow.
-  // Count a successful shell call whose output carries the installed file's
-  // opening text: then the same instructions reached the agent's context.
   const opening = [...installed].flatMap((p) => {
     const t = fs.readFileSync(p, "utf8").slice(0, 300).trim();
 
@@ -120,9 +107,6 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
     return `shell read of the installed ${skill}/SKILL.md`;
   }
 
-  // Codex reports a read only when the whole command exits zero, so `cat
-  // SKILL.md; rg ...` with an rg that finds nothing hides a read that did put
-  // the skill in context. Its raw items keep every command's output.
   const printed = codexCommandOutputs(context.providerResponse?.raw).some((out) =>
     opening.some((t) => out.includes(t)),
   );
@@ -158,9 +142,6 @@ function codexCommandOutputs(raw: unknown): Array<string> {
   );
 }
 
-// Optional scenarios (out-of-lane cases where declining the skill is right)
-// always pass, and forbidden ones (near-miss prompts) pass only when the skill
-// stayed unloaded; the score always records whether it was loaded.
 export default function assertSkillUsed(
   _output: string,
   context: EvidenceContext,

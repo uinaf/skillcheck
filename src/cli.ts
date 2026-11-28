@@ -20,12 +20,8 @@ import type { Harness, RunOptions } from "./scenario.ts";
 const here = import.meta.dirname;
 const packageDir = path.resolve(here, "..");
 
-// node refuses to strip types under node_modules, so an installed copy runs the
-// compiled dist. Follow this module's own extension to find its sibling.
 const selfExt = path.extname(import.meta.filename);
 
-// Recorded in every result sidecar: a scorecard has to say which harness build
-// produced it, not just which skills tree it graded.
 export function toolVersion(): string {
   return JSON.parse(fs.readFileSync(path.join(packageDir, "package.json"), "utf8")).version;
 }
@@ -47,7 +43,6 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-// Throws on bad input; the CLI entrypoint catches and exits 1.
 export function parseArgs(argv: Array<string>): {
   positional: Array<string>;
   flags: Map<string, string | true>;
@@ -89,17 +84,10 @@ export function parseArgs(argv: Array<string>): {
   return { positional, flags };
 }
 
-// The consumer repo being linted or evaluated. No configurability beyond this
-// one flag: the tree layout below the root is a frozen contract.
 export function resolveRoot(flags: Map<string, string | true>): string {
   return path.resolve((flags.get("--root") as string | undefined) ?? process.cwd());
 }
 
-// Results and scorecards belong to the consumer repo, never to the installed
-// package. Scratch workdirs live outside the repo: an agent under test inside
-// it can reach the skill's source, its evals, and the repo's own CLAUDE.md.
-// The temp dir may be shared, and ensurePrivateDir rejects a scratch root
-// another user owns, so the name carries the UID as well as the root.
 export function stateDirs(
   root: string,
   uid: number | undefined = process.getuid?.(),
@@ -145,8 +133,6 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
   const judgeEffort = flags.get("--judge-effort") as string | undefined;
 
   if (judgeEffort !== undefined) {
-    // A bare Claude judge takes Claude's effort levels; a provider-qualified
-    // judge takes that provider's reasoning_effort.
     const levels = judgeModel.includes(":") ? ["minimal", "low", "medium", "high"] : AGENT_EFFORTS;
 
     if (!levels.includes(judgeEffort)) {
@@ -158,7 +144,6 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
 
   return {
     harness,
-    // claude defaults in scenario.ts; codex/grok undefined = that CLI's default
     agentModel: agent,
     agentEffort,
     judgeModel,
@@ -173,19 +158,13 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
   };
 }
 
-// What a result was measured with. Scores from different configurations are
-// not comparable, so sweep reruns on a change and summarize refuses to merge.
 export interface RunConfig {
   agent_model: string;
   agent_effort: string | null;
   judge_model: string;
   judge_effort: string | null;
   trials: number;
-  // Results before the agent went online had file tools only; they are not
-  // comparable with online runs.
   agent_access: "online" | "offline";
-  // Ran inside the isolated image (container/Dockerfile). A host run can read
-  // the operator's installed skills, plugins, and guidance.
   isolated: boolean;
 }
 
@@ -203,8 +182,6 @@ export function runConfigOf(opts: RunOptions): RunConfig {
   };
 }
 
-// Entries and sidecars written before run configs were recorded lack the
-// effort and trial fields; they ran at the defaults.
 function configKey(c: Partial<RunConfig>): string {
   return JSON.stringify([
     c.agent_model,
@@ -223,8 +200,6 @@ function describeConfig(c: Partial<RunConfig>): string {
   return `agent ${c.agent_model}${effortSuffix(c.agent_effort)}, judge ${c.judge_model}${effortSuffix(c.judge_effort)}, trials ${c.trials ?? 1}, ${c.agent_access ?? "offline"}, ${c.isolated ? "isolated" : "host"}`;
 }
 
-// Throws when rows of one harness were measured with different configurations.
-// Harnesses legitimately differ from each other, so they are compared apart.
 export function assertUniformConfig(
   entries: Array<Partial<RunConfig> & { harness: string }>,
   allowMixed: boolean,
@@ -250,10 +225,6 @@ export function assertUniformConfig(
   }
 }
 
-// The eval engine and provider SDKs are optional peers so a lint-only install
-// stays small; run/sweep must therefore degrade with the exact install
-// command, not crash into a resolution error. Exit 2: a missing engine is an
-// environment error, never a graded verdict.
 function ensureEvalPackages(opts: RunOptions): void {
   const missing = requiredEvalPackages(opts, Boolean(process.env.ANTHROPIC_API_KEY)).filter(
     (pkg) => resolvePackageDir(pkg) === undefined,
@@ -281,15 +252,12 @@ function ensureEvalPackages(opts: RunOptions): void {
   process.exit(2);
 }
 
-// promptfoo's CLI entry inside the resolved peer, run with this same Node.
-// Never `npx promptfoo`: with the engine now an optional peer, npx would fall
-// back to fetching an unpinned promptfoo from the registry when it is absent.
 function promptfooEntry(): string {
   const dir = resolvePackageDir("promptfoo");
 
   if (dir === undefined) {
     throw new Error("promptfoo is not installed");
-  } // ensureEvalPackages ran first
+  }
 
   const bin: unknown = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).bin;
   const rel = typeof bin === "string" ? bin : (bin as Record<string, string> | null)?.promptfoo;
@@ -310,8 +278,8 @@ interface RunOutcome {
 }
 
 export interface Trial {
-  score: number; // the weighted checklist score
-  pass: boolean; // the checklist met its threshold and the skill was used
+  score: number;
+  pass: boolean;
   skillUsed: boolean;
 }
 
@@ -332,16 +300,9 @@ interface Component {
   componentResults?: unknown;
 }
 
-// promptfoo's ResultFailureReason: NONE, ASSERT, ERROR.
 const GRADED_REASONS = new Set([0, 1]);
 const ERRORED_REASON = 2;
 
-// A promptfoo test that errored was never graded. It carries an `error` and
-// lands in stats.errors with nothing scored. Reporting that as score=0 FAIL
-// would let a transport or resolution failure masquerade as a judge's verdict,
-// so an errored trial stays an ERROR and exits 2 per the documented contract.
-// One errored trial errors the scenario: pass^k over fewer than k trials is
-// not the number that was asked for.
 export function classifyResult(raw: unknown, expectedTrials?: number): Verdict {
   const root = raw as { results?: { results?: unknown; stats?: Stats | null } } | undefined;
   const rows = root?.results?.results;
@@ -354,7 +315,6 @@ export function classifyResult(raw: unknown, expectedTrials?: number): Verdict {
     return { error: `promptfoo returned ${rows.length} of ${expectedTrials} trials` };
   }
 
-  // Stats total every row, so they can only attest a single-row result.
   const stats = rows.length === 1 ? (root?.results?.stats ?? undefined) : undefined;
   const trials: Array<Trial> = [];
 
@@ -393,10 +353,6 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
     return { error: message || "promptfoo reported an errored test" };
   }
 
-  // promptfoo also copies a failed assert-set's threshold reason into the
-  // result's error field while the test counts as a graded failure. That is a
-  // judge's verdict, not a transport error, so the grading evidence wins over
-  // the error text. Results without a failure reason fall back to the stats.
   const graded =
     GRADED_REASONS.has(res.failureReason as number) ||
     (stats !== undefined &&
@@ -421,17 +377,12 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
     return { error: "promptfoo result carried no usable score" };
   }
 
-  // promptfoo's row score averages the checklist with the skill-used
-  // assertion, so both are read from their own components. A row without
-  // them was not graded against this harness's assertions.
   const components = Array.isArray(res.gradingResult?.componentResults)
     ? (res.gradingResult.componentResults as Array<Component | null>)
     : [];
 
   const checklist = components.find((c) => c?.metadata?.assertionSet?.type === "assert-set");
 
-  // Results before the evidence assertion used promptfoo's built-in type,
-  // whose score equals its pass; an optional one passes with score 0.
   const skillUsed = components.find(
     (c) => c?.assertion?.type === "skill-used" || c?.assertion?.metric === "skill-used",
   );
@@ -440,8 +391,6 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
     return { error: "promptfoo result carried no checklist or skill-used verdict" };
   }
 
-  // A rubric item whose judge call failed scores 0 with promptfoo's
-  // graderError tag; that is a broken judge, not a verdict on the work.
   const items = Array.isArray(checklist.componentResults)
     ? (checklist.componentResults as Array<Component | null>)
     : [];
@@ -457,19 +406,17 @@ function classifyRow(raw: unknown, stats: Stats | undefined): Trial | { error: s
   return { score: checklist.score, pass: res.success, skillUsed: skillUsed.score >= 1 };
 }
 
-// Spread at or above this, or a mix of passes and fails, marks a scenario
-// whose single-trial verdict could have gone either way.
 export const NOISY_SPREAD = 0.2;
 
 export interface TrialStats {
   trials: number;
-  pass: boolean; // pass^k: every trial passed
+  pass: boolean;
   passes: number;
   pass_rate: number;
-  score: number; // mean weighted checklist score
+  score: number;
   score_min: number;
-  score_spread: number; // max - min
-  skill_used: number; // trials that loaded the skill
+  score_spread: number;
+  skill_used: number;
   skill_used_rate: number;
   noisy: boolean;
 }
@@ -497,7 +444,6 @@ export function aggregateTrials(trials: Array<Trial>): TrialStats {
     score_spread: round4(spread),
     skill_used: skillUsed,
     skill_used_rate: round4(skillUsed / trials.length),
-    // Tolerance only absorbs float error: 0.7 - 0.5 is 0.19999999999999996.
     noisy: (passes > 0 && passes < trials.length) || spread >= NOISY_SPREAD - 1e-9,
   };
 }
@@ -532,9 +478,6 @@ function attemptPath(resultPath: string): string {
   return `${resultPath}.attempt`;
 }
 
-// The scratch root sits in a possibly shared temp dir. Create it owner-only
-// and refuse one that is a symlink or belongs to someone else, so another
-// user cannot redirect the rebuild-and-delete of run directories.
 export function ensurePrivateDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const st = fs.lstatSync(dir);
@@ -563,8 +506,6 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   fs.mkdirSync(dirs.results, { recursive: true });
   const resultPath = path.join(dirs.results, `${name}.json`);
 
-  // Keep attempted identity even when the child produces no output. This is
-  // separate from the result so a no-output failure remains eligible for sweep.
   const identity = {
     skill,
     scenario,
@@ -573,7 +514,6 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
   };
 
   fs.writeFileSync(attemptPath(resultPath), JSON.stringify(identity) + "\n");
-  // Never let a stale result masquerade as this run's outcome.
   fs.rmSync(resultPath, { force: true });
   fs.rmSync(metaPath(resultPath), { force: true });
   const sha = gitHead(root);
@@ -592,8 +532,6 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
       "-o",
       resultPath,
     ],
-    // Failing assertions exit 0 because graded FAIL comes from the result
-    // file. promptfoo resolves other paths relative to the installed package.
     {
       cwd: packageDir,
       stdio: "inherit",
@@ -601,12 +539,12 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
     },
   );
 
-  const rc = r.status ?? 1; // null status (signal) counts as failure
+  const rc = r.status ?? 1;
   const outcome: RunOutcome = { name, rc, resultPath };
 
   if (rc !== 0) {
     return outcome;
-  } // ERROR regardless of what's on disk
+  }
 
   let verdict: Verdict;
 
@@ -622,8 +560,6 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
 
   outcome.stats = aggregateTrials(verdict.trials);
 
-  // Provenance is only written for a graded result: an errored run has nothing
-  // to attest, and a sidecar without a score would poison the scorecard.
   fs.writeFileSync(
     metaPath(resultPath),
     JSON.stringify(
@@ -645,12 +581,6 @@ function runScenario(scenarioDir: string, opts: RunOptions, root: string): RunOu
 }
 
 function judgeName(judge: unknown): string {
-  // Only results written before run configs were recorded reach this. A
-  // string judge "anthropic:messages:X" is either a bare --judge X expanded
-  // for ANTHROPIC_API_KEY or a provider-qualified --judge with that exact ID,
-  // and the config cannot tell them apart; read it as the bare default.
-  // Other provider-qualified IDs are recorded verbatim. SDK judge objects
-  // carry the model in config, while wrapped providers carry it in id.
   if (typeof judge === "string") {
     return judge.replace(/^anthropic:messages:/, "");
   }
@@ -662,13 +592,9 @@ function judgeName(judge: unknown): string {
     return "unknown";
   }
 
-  // Only a bare Claude judge is wrapped with `effort`; a provider-qualified
-  // judge is wrapped with `reasoning_effort` and keeps its full ID.
   return j?.config?.effort === undefined ? name : name.replace(/^anthropic:messages:/, "");
 }
 
-// The configuration a graded result ran with. Sidecars written before run
-// configs were recorded fall back to the promptfoo config inside the result.
 export function resultRunConfig(raw: unknown, meta: unknown, harness: string): RunConfig {
   const m = meta as Partial<RunConfig> | null | undefined;
 
@@ -719,9 +645,6 @@ function readJson(file: string): unknown {
   }
 }
 
-// The live (skill, scenario) pairs under a root, or undefined for a root with
-// no skills tree, which holds results only. A scenario deleted from the tree,
-// even the last one, must not live on through a leftover result or a carried row.
 export function liveScenarios(root: string): Set<string> | undefined {
   const cli = path.join(root, "cli");
 
@@ -793,8 +716,6 @@ function discoverScenarios(root: string): Array<string> {
 const RUN_FLAGS =
   "[--root DIR] [--harness claude|codex|grok] [--agent MODEL] [--agent-effort EFFORT] [--judge MODEL] [--judge-effort EFFORT] [--trials K] [--max-turns N] [--control]";
 
-// Outside the isolated image the agent shares the operator's machine: it can
-// read installed skills, plugins, guidance, and any file by absolute path.
 function warnHostRun(): void {
   if (isIsolated()) {
     return;
@@ -853,8 +774,6 @@ function cmdSweep(argv: Array<string>): void {
     const resultPath = path.join(resultsDir, `${name}.json`);
 
     if (!all && fs.existsSync(resultPath) && !fs.existsSync(attemptPath(resultPath))) {
-      // A malformed legacy result is incomplete and must be rerun, and so is
-      // one measured with a different configuration.
       const raw = readJson(resultPath);
       const config = resultRunConfig(raw, readJson(metaPath(resultPath)), opts.harness);
       const graded = !("error" in classifyResult(raw, config.trials));
@@ -894,11 +813,10 @@ export interface ScorecardEntry extends TrialStats, RunConfig {
   skill: string;
   scenario: string;
   harness: Harness | "cursor";
-  // "control" rows ran without the skill installed. Absent on older rows.
   variant?: Variant;
   skills_tree_sha: string;
-  latency_ms: number; // mean per trial
-  tokens: number; // agent and judge, summed over trials
+  latency_ms: number;
+  tokens: number;
 }
 
 export type Variant = "skill" | "control";
@@ -923,30 +841,24 @@ function resultIdentity(file: string, dir: string): Identity {
   const base = file.replace(/\.json$/, "");
 
   for (const sidecar of [`${base}.meta.json`, `${file}.attempt`]) {
-    try {
-      const identity: unknown = JSON.parse(fs.readFileSync(path.join(dir, sidecar), "utf8"));
+    const identity = readJson(path.join(dir, sidecar));
 
-      if (
-        identity !== null &&
-        typeof identity === "object" &&
-        "skill" in identity &&
-        typeof identity.skill === "string" &&
-        "scenario" in identity &&
-        typeof identity.scenario === "string" &&
-        "harness" in identity &&
-        (identity.harness === "claude" ||
-          identity.harness === "codex" ||
-          identity.harness === "grok")
-      ) {
-        return {
-          skill: identity.skill,
-          scenario: identity.scenario,
-          harness: identity.harness,
-          variant: "variant" in identity && identity.variant === "control" ? "control" : "skill",
-        };
-      }
-    } catch {
-      // Old results and attempts have no identity metadata.
+    if (
+      identity !== null &&
+      typeof identity === "object" &&
+      "skill" in identity &&
+      typeof identity.skill === "string" &&
+      "scenario" in identity &&
+      typeof identity.scenario === "string" &&
+      "harness" in identity &&
+      (identity.harness === "claude" || identity.harness === "codex" || identity.harness === "grok")
+    ) {
+      return {
+        skill: identity.skill,
+        scenario: identity.scenario,
+        harness: identity.harness,
+        variant: "variant" in identity && identity.variant === "control" ? "control" : "skill",
+      };
     }
   }
 
@@ -954,8 +866,6 @@ function resultIdentity(file: string, dir: string): Identity {
     throw new Error(`missing identity metadata for ${file}`);
   }
 
-  // Escaped parts never contain "--", so a trailing --control after at least
-  // skill--scenario is the control suffix, not part of a name.
   const unsuffixed = base.replace(/--control$/, "");
   const variant: Variant = unsuffixed !== base && unsuffixed.includes("--") ? "control" : "skill";
   const stem = variant === "control" ? unsuffixed : base;
@@ -974,9 +884,6 @@ interface Usage {
   assertions?: { total?: number };
 }
 
-// Pure reducer over a results directory. Skips files that are not promptfoo
-// results (warns to stderr, reported in `skipped`); throws on mixed
-// skills-tree revisions unless allowMixed.
 export function reduceResults(
   dir: string,
   allowMixed: boolean,
@@ -1002,8 +909,6 @@ export function reduceResults(
   const results = files.filter((f) => f.endsWith(".json") && !f.endsWith(".meta.json"));
 
   for (const f of [...new Set([...results, ...incomplete])].sort()) {
-    // Retired scenarios are excluded before any validation: their stale
-    // revisions and failed attempts are not this tree's concern.
     let identity: Identity | undefined;
 
     try {
@@ -1012,8 +917,6 @@ export function reduceResults(
       identity = undefined;
     }
 
-    // A file with no scenario in its name or sidecar is not a result at all;
-    // it keeps its skipped-file warning below.
     if (identity !== undefined && identity.scenario !== "" && !isLive(live, identity)) {
       retired.add(entryKey(identity));
       continue;
@@ -1054,7 +957,6 @@ export function reduceResults(
 
     const key = entryKey({ skill, scenario, harness, variant });
     gradedAt.set(key, Math.max(gradedAt.get(key) ?? 0, fs.statSync(path.join(dir, f)).mtimeMs));
-    // Missing or malformed sidecars are unattested.
     const sha = typeof meta?.skills_tree_sha === "string" ? meta.skills_tree_sha : "unattested";
     shas.add(sha);
     const stats = aggregateTrials(verdict.trials);
@@ -1085,15 +987,10 @@ export function reduceResults(
   return { treeSha, entries, skipped, gradedAt, retired };
 }
 
-// One scenario's identity in a scorecard. Rerunning a subset must update those
-// rows and leave every other row alone.
 function entryKey(e: Pick<ScorecardEntry, "skill" | "scenario" | "harness" | "variant">): string {
   return [e.skill, e.scenario, e.harness, e.variant ?? "skill"].join("\0");
 }
 
-// A consumer whose results/ holds only today's rerun would otherwise overwrite
-// a committed same-date scorecard with a fraction of its entries. Merge instead:
-// fresh entries win, untouched ones survive.
 export function mergeScorecard(
   existing: Array<ScorecardEntry>,
   fresh: Array<ScorecardEntry>,
@@ -1127,8 +1024,6 @@ export function treeShaOf(entries: Array<ScorecardEntry>): string {
   return shas.size === 1 ? [...shas][0] : shas.size === 0 ? "none" : "mixed";
 }
 
-// Reads a scorecard that is about to be merged into. A same-date file that
-// cannot be understood is a stop, not a licence to overwrite it.
 function readExistingScorecard(out: string): Array<ScorecardEntry> {
   if (!fs.existsSync(out)) {
     return [];
@@ -1260,18 +1155,15 @@ export interface SkillSummary {
   skill: string;
   harness: string;
   scenarios: number;
-  pass_all: number; // scenarios whose every trial passed
-  pass_rate: number; // mean over scenarios
-  score: number; // mean over scenarios
+  pass_all: number;
+  pass_rate: number;
+  score: number;
   noisy: Array<string>;
-  // Over scenarios that also have a control row; null without any.
   control_score: number | null;
-  lift: number | null; // skill score minus control score on those scenarios
-  no_lift: Array<string>; // scenarios whose control passed every trial
+  lift: number | null;
+  no_lift: Array<string>;
 }
 
-// Scenarios weigh equally; rows from an older scorecard without trial fields
-// count as one trial.
 const mean4 = (xs: Array<number>) => round4(xs.reduce((a, b) => a + b, 0) / xs.length);
 
 export function summarizeSkills(entries: Array<ScorecardEntry>): Array<SkillSummary> {
@@ -1365,8 +1257,6 @@ function cmdLint(argv: Array<string>): void {
   console.log(`skill lint: ${count} package(s) clean`);
 }
 
-// npm links bins through node_modules/.bin, so the entrypoint and module URLs
-// must be compared by filesystem identity.
 function isMainModule(): boolean {
   const entry = process.argv[1];
 

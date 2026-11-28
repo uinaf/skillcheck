@@ -1,5 +1,3 @@
-// promptfoo output transform: append files the agent created or changed in the
-// scenario workdir, so llm-rubric grades the deliverables, not just chat text.
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,15 +6,9 @@ interface TransformContext {
   vars: { workdir: string; manifest: string; [key: string]: string };
 }
 
-// Rubric judges choke on very large graded outputs (observed: a 117KB
-// transcript+deliverable dump returned "No output" for every rubric call).
-// Cap each file and the total; truncation is explicit so the judge knows.
-// 4KB per file was too small: judges failed workflow rubrics on steps they
-// could not see past the cut.
 const PER_FILE_CAP = 16_000;
 const TOTAL_CAP = 64_000;
 
-// String.slice can split a surrogate pair; back off one unit when it would.
 function safeSlice(text: string, end: number): string {
   let cut = text.slice(0, end);
   const last = cut.charCodeAt(cut.length - 1);
@@ -36,9 +28,6 @@ function capped(rel: string, text: string): string {
   return `=== OUTPUT FILE: ${rel} (truncated: showing ${PER_FILE_CAP} of ${text.length} chars) ===\n${safeSlice(text, PER_FILE_CAP)}\n=== END OUTPUT FILE ===`;
 }
 
-// Agent config roots, installed dependencies, and tool caches are not
-// deliverables. A cache can be hundreds of KB and fill the total cap before the
-// judge sees a real file. materialize() skips the same dirs in the manifest.
 export const SKIPPED_DIRS = new Set([
   ".claude",
   ".grok",
@@ -85,7 +74,6 @@ export default function transform(output: string, context: TransformContext): st
           sections.push({ rel, text: capped(rel, body.toString("utf8")) });
         }
       } else {
-        // Symlinks, FIFOs, sockets: name them for the judge, never read them.
         const nrel = path.relative(workdir, p);
         sections.push({ rel: nrel, text: `=== NON-REGULAR FILE: ${nrel} ===` });
       }
@@ -107,8 +95,6 @@ export default function transform(output: string, context: TransformContext): st
     return output;
   }
 
-  // Deterministic path order: the total cap must not drop files by readdir
-  // whim; later-sorting files are still the ones cut, but reproducibly so.
   sections.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
   let appended = sections.map((s) => s.text).join("\n\n");
 

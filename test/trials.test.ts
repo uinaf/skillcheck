@@ -55,9 +55,6 @@ function generate(dir: string, opts: Partial<RunOptions>) {
   );
 }
 
-// One promptfoo row the way promptfoo writes it for this harness's config: the
-// assert-set's weighted checklist score and the skill-used verdict are
-// components, and the row score averages them.
 function row(checklist: number, skillUsed: boolean, extra: object = {}) {
   const pass = checklist >= 0.7 && skillUsed;
 
@@ -110,7 +107,6 @@ test("aggregateTrials: noise is a pass/fail mix or a spread of at least 0.2", ()
   assert.equal(aggregateTrials([trialOf(0.72, true), trialOf(0.68, false)]).noisy, true);
   assert.equal(aggregateTrials([trialOf(0.5, false), trialOf(0.7, false)]).noisy, true);
   assert.equal(aggregateTrials([trialOf(0.5, false), trialOf(0.69, false)]).noisy, false);
-  // The threshold applies to the exact spread, not the stored rounding.
   assert.equal(aggregateTrials([trialOf(0.5, false), trialOf(0.69996, false)]).noisy, false);
   assert.equal(aggregateTrials([trialOf(0.1, false)]).noisy, false);
   const stable = aggregateTrials([trialOf(0.9, true), trialOf(0.9, true), trialOf(0.9, true)]);
@@ -350,9 +346,6 @@ test("generateRun: k trials get k isolated workdirs, each bound to one provider"
   }
 });
 
-// Runs the generated config through the real promptfoo and Agent SDK, with a
-// stub standing in for the Claude Code binary, and returns what each spawned
-// process received. No model is called.
 function spawnedAgents(dir: string, opts: Partial<RunOptions>) {
   const stub = path.join(dir, "claude-stub.mjs");
   const log = path.join(dir, "argv.jsonl");
@@ -406,7 +399,6 @@ process.exit(1);
   return { calls, config, result: JSON.parse(fs.readFileSync(out, "utf8")) };
 }
 
-// Two real promptfoo evals: seconds locally, longer on a cold CI runner.
 test(
   "agent effort reaches the spawned Claude Code process of every trial",
   { timeout: 60_000 },
@@ -433,7 +425,6 @@ test(
         ),
         "each trial's agent runs in its own workdir",
       );
-      // A dead agent is an errored trial, never a graded FAIL.
       assert.match(
         (classifyResult(result) as { error: string }).error,
         /^trial \d: .*Claude Code process exited/,
@@ -532,7 +523,6 @@ test("summarize: refuses to merge runs with different agent effort or trials", (
     assert.equal(allowed.rc, 0, allowed.stderr);
     assert.match(allowed.stdout, /demo\s+claude\s+2\s+2\/2\s+1\.00\s+0\.90\s+0/);
 
-    // A same-date scorecard row from a one-trial run is a mismatch too.
     writeGraded(results, "demo--two", { agent_effort: "medium", trials: 3 });
     const [card] = fs.readdirSync(scorecards);
     const existing = JSON.parse(fs.readFileSync(path.join(scorecards, card), "utf8"));
@@ -707,8 +697,6 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
       "an unfinished read is no evidence",
     );
 
-    // An installed copy that links back to the source: reading the source
-    // path is not reading what the agent was handed.
     const linked = path.join(dir, "linked");
     fs.mkdirSync(path.join(linked, ".claude", "skills", "demo"), { recursive: true });
     const source = path.join(dir, "source", "demo", "SKILL.md");
@@ -1012,7 +1000,6 @@ test("summarize: drops carried and fresh rows for scenarios no longer in the tre
       ["basic"],
     );
 
-    // A row carried from an earlier scorecard is dropped the same way.
     fs.rmSync(path.join(results, "demo--gone.json"));
     fs.rmSync(path.join(results, "demo--gone.meta.json"));
     fs.writeFileSync(
@@ -1330,7 +1317,6 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
     write("near/evals/s/criteria.json", "{}");
     write("x/SKILL.md", "---\nname: x\ndescription: x\n---\n");
     write("hidden/SKILL.md", "---\nname: hidden\ndisable-model-invocation: true\n---\n");
-    // Aliases of the skill under test would install its evals beside it.
     fs.symlinkSync(path.join(skills, "demo"), path.join(skills, "alias"));
     fs.mkdirSync(path.join(skills, "mdlink"));
     fs.symlinkSync(path.join(skills, "x", "SKILL.md"), path.join(skills, "mdlink", "SKILL.md"));

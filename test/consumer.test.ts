@@ -44,8 +44,6 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
     assert.equal(linted.status, 0, linted.stderr);
     assert.match(linted.stdout, /skill lint: 2 package\(s\) clean/);
 
-    // An empty ANTHROPIC_API_KEY is no key: the bare default judge grades
-    // through the agent SDK, so the preflight must ask for it too.
     const preflight = run(
       path.join(consumer, "node_modules", ".bin", "skillcheck"),
       ["run", "missing-scenario", "--harness", "grok"],
@@ -59,8 +57,6 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
       /^missing eval package\(s\): promptfoo, @anthropic-ai\/claude-agent-sdk$/m,
     );
 
-    // promptfoo loads these by file URL beside cli.js, so a pack that drops
-    // one still lints but breaks every eval.
     for (const entry of ["transform.js", "skill-evidence.js"]) {
       assert.ok(
         fs.existsSync(path.join(consumer, "node_modules/@uinaf/skillcheck/dist", entry)),
