@@ -1,3 +1,4 @@
+import uinaf, { env, ignorePatterns } from "@uinaf/oxlint-config/vite-plus";
 import { defineConfig } from "vite-plus";
 
 const stableShell = {
@@ -105,9 +106,27 @@ export default defineConfig({
   },
 
   lint: {
-    ignorePatterns: ["dist/**", "test/fixtures/**"],
+    extends: [uinaf],
+    env,
+    ignorePatterns: [...ignorePatterns, "dist/**", "test/fixtures/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    rules: {
+      "vite-plus/prefer-vite-plus-imports": "error",
+      "anti-slop/no-runtime-typeof": "off",
+      "anti-slop/no-unknown-parameters": "off",
+      "anti-slop/require-safety-comment-for-type-assertion": "off",
+      "quality/no-known-value-widening": "off",
+      "quality/no-conditional-empty-object-spread": "off",
+      "quality/no-unsafe-dictionary-type": "off",
+      "quality/no-object-parameters": "off",
+      "no-console": "off",
+      "quality/no-unknown-returns": "off",
+      "typescript/no-unsafe-return": "off",
+      "typescript/no-unsafe-member-access": "off",
+      "typescript/no-unsafe-type-assertion": "off",
+      "typescript/no-unsafe-assignment": "off",
+      "typescript/no-unsafe-call": "off",
+    },
     options: { typeAware: true, typeCheck: true },
   },
 

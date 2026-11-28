@@ -4,7 +4,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { test } from "vite-plus/test";
 import {
   classifyResult,
@@ -16,9 +15,8 @@ import {
   stateDirs,
   toolVersion,
   treeShaOf,
-  type ScorecardEntry,
-  type Verdict,
 } from "../src/cli.ts";
+import type { ScorecardEntry, Verdict } from "../src/cli.ts";
 import {
   generateRun,
   requiredEvalPackages,
@@ -27,7 +25,7 @@ import {
   sdkNodeModulesDir,
 } from "../src/scenario.ts";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+const here = import.meta.dirname;
 const cli = path.join(here, "..", "src", "cli.ts");
 const fixtures = path.join(here, "fixtures");
 
@@ -42,6 +40,7 @@ test("parseArgs: positionals, value flags, booleans", () => {
     "codex",
     "--all",
   ]);
+
   assert.deepEqual(positional, ["dir"]);
   assert.equal(flags.get("--agent"), "m1");
   assert.equal(flags.get("--judge"), "m2");
@@ -86,6 +85,7 @@ test("toolVersion: reads the installed package version", () => {
   const installed = JSON.parse(
     fs.readFileSync(path.join(here, "..", "package.json"), "utf8"),
   ).version;
+
   assert.equal(toolVersion(), installed);
 });
 
@@ -134,11 +134,14 @@ test("run names are unique across separator and harness boundaries", () => {
     "control",
     "a--control",
   ];
+
   const names = new Map<string, string>();
+
   for (const skill of parts) {
     for (const scenario of parts) {
       for (const harness of ["claude", "codex", "grok"] as const) {
         const identity = `${skill}/${scenario}/${harness}`;
+
         for (const control of [false, true]) {
           const id = `${identity}${control ? "/control" : ""}`;
           const name = runNameFor(`/repo/skills/${skill}/evals/${scenario}`, harness, control);
@@ -150,8 +153,6 @@ test("run names are unique across separator and harness boundaries", () => {
   }
 });
 
-// A graded promptfoo row for this harness's config: the checklist score and
-// the skill-used verdict live in their own components.
 function graded(score: number, success: boolean, extra: object = {}) {
   return {
     score,
@@ -188,7 +189,9 @@ function writeResult(
       defaultTest: { options: { provider: judge } },
     },
   };
+
   fs.writeFileSync(path.join(dir, `${name}.json`), JSON.stringify(result));
+
   if (sha !== undefined) {
     fs.writeFileSync(path.join(dir, `${name}.meta.json`), JSON.stringify({ skills_tree_sha: sha }));
   }
@@ -196,16 +199,19 @@ function writeResult(
 
 test("reduceResults restores escaped scenario identities", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-identity-"));
+
   try {
     const claude = runNameFor("/repo/skills/demo/evals/basic--grok", "claude");
     const grok = runNameFor("/repo/skills/demo/evals/basic", "grok");
     writeResult(dir, claude, 0.8, true);
     writeResult(dir, grok, 0.9, true);
     writeResult(dir, runNameFor("/repo/skills/demo/evals/50%--done", "claude"), 0.7, true);
+
     const identities = reduceResults(dir, false).entries.map(({ scenario, harness }) => ({
       scenario,
       harness,
     }));
+
     assert.deepEqual(identities, [
       { scenario: "basic", harness: "grok" },
       { scenario: "50%--done", harness: "claude" },
@@ -218,6 +224,7 @@ test("reduceResults restores escaped scenario identities", () => {
 
 test("reduceResults preserves a legacy name that starts with the encoding marker", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-legacy-name-"));
+
   try {
     writeResult(dir, "demo--~v2~foo", 0.8, true);
     writeResult(dir, "demo--foo", 0.9, true);
@@ -232,6 +239,7 @@ test("reduceResults preserves a legacy name that starts with the encoding marker
 
 test("reduceResults preserves a legacy skill beginning with the hash marker", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-legacy-hash-name-"));
+
   try {
     writeResult(dir, "~v3~foo--bar", 0.8, true, "sha1");
     const [entry] = reduceResults(dir, false).entries;
@@ -246,6 +254,7 @@ test("long escaped run names remain within filename limits and retain identity",
   const name = runNameFor(`/repo/skills/demo/evals/${scenario}`, "grok");
   assert.ok(Buffer.byteLength(`${name}.json.attempt`) <= 255);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-long-name-"));
+
   try {
     writeResult(dir, name, 0.9, true);
     fs.writeFileSync(
@@ -262,7 +271,7 @@ test("long escaped run names remain within filename limits and retain identity",
 test("reduceResults: valid, malformed, and unattested results", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
   writeResult(dir, "skillx--scen-a", 0.9, true, "sha1");
-  writeResult(dir, "skillx--scen-b--codex", 0.4, false); // no sidecar → unattested... but mixed with sha1
+  writeResult(dir, "skillx--scen-b--codex", 0.4, false);
   writeResult(dir, "skillx--scen-c--codex", 0.8, true, "sha1");
   writeResult(dir, "skillx--scen-d", 0.9, true, "sha1", "openai:chat:gpt-5.6-sol");
   writeResult(dir, "skillx--scen-e", 0.9, true, "sha1", {
@@ -329,6 +338,7 @@ test("reduceResults: valid, malformed, and unattested results", () => {
 
 test("retired Cursor results cannot become Claude scores or hide a skipped rerun", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-retired-result-"));
+
   try {
     const dirs = stateDirs(root);
     fs.mkdirSync(dirs.results, { recursive: true });
@@ -353,6 +363,7 @@ test("retired Cursor results cannot become Claude scores or hide a skipped rerun
 
 test("a fresh graded result supersedes a legacy attempt for the same scenario", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-legacy-attempt-"));
+
   try {
     const dirs = stateDirs(root);
     fs.mkdirSync(dirs.results, { recursive: true });
@@ -375,6 +386,7 @@ test("a fresh graded result supersedes a legacy attempt for the same scenario", 
 
 test("a newer failed attempt cannot be hidden by an older graded result", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-new-attempt-"));
+
   try {
     const dirs = stateDirs(root);
     fs.mkdirSync(dirs.results, { recursive: true });
@@ -400,6 +412,7 @@ test("a newer failed attempt cannot be hidden by an older graded result", () => 
 
 test("reduceResults: skips transport errors but retains graded failures", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
+
   try {
     for (const [name, error, stats] of [
       ["transport", "fixture transport failure", { successes: 0, failures: 0, errors: 1 }],
@@ -414,6 +427,7 @@ test("reduceResults: skips transport errors but retains graded failures", () => 
         }),
       );
     }
+
     const reduced = reduceResults(dir, false);
     assert.deepEqual(reduced.skipped, [
       "demo--no-stats.json",
@@ -432,6 +446,7 @@ test("reduceResults: skips transport errors but retains graded failures", () => 
 
 test("reduceResults: skips malformed result rows and tolerates absent stats", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-test-"));
+
   try {
     for (const [index, raw] of [
       null,
@@ -441,6 +456,7 @@ test("reduceResults: skips malformed result rows and tolerates absent stats", ()
     ].entries()) {
       fs.writeFileSync(path.join(dir, `malformed-${index}.json`), JSON.stringify(raw));
     }
+
     fs.writeFileSync(
       path.join(dir, "demo--graded.json"),
       JSON.stringify({
@@ -474,20 +490,28 @@ test("reduceResults: empty directory", () => {
 
 test("parsePositiveInt validates values", () => {
   assert.equal(parsePositiveInt("--max-turns", "80"), 80);
-  for (const raw of ["abc", "-3", "0", "Infinity", "2.5"])
+
+  for (const raw of ["abc", "-3", "0", "Infinity", "2.5"]) {
     assert.throws(() => parsePositiveInt("--trials", raw), /--trials must be a positive integer/);
+  }
 });
 
 test("run and sweep reject --max-turns for harnesses without a turn limit", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-turn-limit-"));
+
   try {
     for (const command of ["run", "sweep"]) {
       const args = [command];
-      if (command === "run") args.push("missing-scenario");
+
+      if (command === "run") {
+        args.push("missing-scenario");
+      }
+
       const result = runCli([...args, "--root", root, "--harness", "codex", "--max-turns", "2"]);
       assert.equal(result.rc, 1, result.stderr);
       assert.match(result.stderr, /--max-turns is only supported with --harness claude/);
     }
+
     assert.equal(fs.existsSync(path.join(root, ".skillcheck")), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -507,7 +531,6 @@ function errorOf(v: Verdict): string {
 }
 
 test("classifyResult: an errored test is never a scored FAIL", () => {
-  // Shape promptfoo writes when the provider blows up: 0 pass / 0 fail / 1 error.
   const errored = {
     results: {
       results: [
@@ -520,6 +543,7 @@ test("classifyResult: an errored test is never a scored FAIL", () => {
       stats: { successes: 0, failures: 0, errors: 1 },
     },
   };
+
   assert.match(errorOf(classifyResult(errored)), /could not be resolved/);
 });
 
@@ -530,6 +554,7 @@ test("classifyResult: stats-only errors, missing results, and unusable scores", 
       stats: { successes: 0, failures: 0, errors: 1 },
     },
   };
+
   assert.match(errorOf(classifyResult(statsOnly)), /nothing graded/);
 
   assert.match(errorOf(classifyResult({ results: { results: [] } })), /no result/);
@@ -541,42 +566,43 @@ test("classifyResult: stats-only errors, missing results, and unusable scores", 
 });
 
 test("classifyResult: a graded fail carrying the threshold reason is FAIL, not ERROR", () => {
-  // promptfoo puts a failed assert-set's reason in the error field even when
-  // its stats record a graded failure.
   const gradedFail = {
     results: {
       results: [graded(0.62, false, { error: "Aggregate score 0.62 < 0.7 threshold" })],
       stats: { successes: 0, failures: 1, errors: 0 },
     },
   };
+
   assert.deepEqual(classifyResult(gradedFail), {
     trials: [{ score: 0.62, pass: false, skillUsed: true }],
   });
 
-  // Without stats to attest the grading, error text still wins.
   const noStats = {
     results: { results: [{ score: 0, success: false, error: "provider blew up" }] },
   };
+
   assert.match(errorOf(classifyResult(noStats)), /provider blew up/);
 });
 
+const gradedRun = (score: number, success: boolean) => ({
+  results: {
+    results: [graded(score, success)],
+    stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 },
+  },
+});
+
 test("classifyResult: graded verdicts still pass through untouched", () => {
-  const result = (score: number, success: boolean) => ({
-    results: {
-      results: [graded(score, success)],
-      stats: { successes: success ? 1 : 0, failures: success ? 0 : 1, errors: 0 },
-    },
-  });
-  assert.deepEqual(classifyResult(result(0.91, true)), {
+  assert.deepEqual(classifyResult(gradedRun(0.91, true)), {
     trials: [{ score: 0.91, pass: true, skillUsed: true }],
   });
-  assert.deepEqual(classifyResult(result(0, false)), {
+  assert.deepEqual(classifyResult(gradedRun(0, false)), {
     trials: [{ score: 0, pass: false, skillUsed: true }],
   });
 });
 
 function entry(skill: string, scenario: string, score: number, sha = "sha1"): ScorecardEntry {
   const pass = score >= 0.7;
+
   return {
     skill,
     scenario,
@@ -641,12 +667,17 @@ test("treeShaOf: uniform, mixed, and empty", () => {
   assert.equal(treeShaOf([]), "none");
 });
 
-function seedScorecards(dir: string, original: string): string[] {
+function seedScorecards(dir: string, original: string): Array<string> {
   const now = Date.now();
+
   const paths = [now, now + 86_400_000].map((time) =>
     path.join(dir, `${new Date(time).toISOString().slice(0, 10)}.json`),
   );
-  for (const out of paths) fs.writeFileSync(out, original);
+
+  for (const out of paths) {
+    fs.writeFileSync(out, original);
+  }
+
   return paths;
 }
 
@@ -660,6 +691,7 @@ for (const mode of [
 ] as const) {
   test(`run: ${mode} rerun cannot refresh an old scorecard`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-run-"));
+
     try {
       fs.cpSync(path.join(fixtures, "clean", "skills"), path.join(root, "skills"), {
         recursive: true,
@@ -705,6 +737,7 @@ cp.spawnSync = (command, args, options) => spawn(command, [${JSON.stringify(fake
 syncBuiltinESMExports();
 `,
       );
+
       const setChild = (behavior: string) =>
         fs.writeFileSync(
           fake,
@@ -717,20 +750,30 @@ if (mode === "nonzero-scored" || mode === "success") fs.writeFileSync(out, JSON.
 process.exit(mode.startsWith("nonzero") ? 1 : 0);
 `,
         );
-      const invoke = (args: string[]) =>
+
+      const invoke = (args: Array<string>) =>
         spawnSync(process.execPath, ["--import", preload, cli, ...args, "--root", root], {
           encoding: "utf8",
         });
+
       setChild(mode);
       const failed = invoke(["run", path.join(root, "skills", "demo", "evals", "basic.attempt")]);
       assert.equal(failed.status, 2, failed.stderr);
       assert.match(failed.stderr, /ERROR demo--basic.attempt/);
       assert.equal(fs.existsSync(meta), false);
-      if (mode === "error-json-legacy") fs.rmSync(`${resultPath}.attempt`);
+
+      if (mode === "error-json-legacy") {
+        fs.rmSync(`${resultPath}.attempt`);
+      }
+
       const summary = runCli(["summarize", "--root", root]);
       assert.equal(summary.rc, 1, summary.stdout);
       assert.match(summary.stderr, /skipped rerun/);
-      for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+
+      for (const out of paths) {
+        assert.equal(fs.readFileSync(out, "utf8"), original);
+      }
+
       if (mode === "empty" || mode === "nonzero-empty" || mode.startsWith("error-json")) {
         assert.equal(fs.existsSync(resultPath), mode.startsWith("error-json"));
         const retry = invoke(["sweep"]);
@@ -738,6 +781,7 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
         assert.match(retry.stdout, /ERROR demo--basic.attempt/);
         assert.doesNotMatch(retry.stdout, /SKIP/);
       }
+
       setChild("success");
       const passed = invoke(["run", path.join(root, "skills", "demo", "evals", "basic.attempt")]);
       assert.equal(passed.status, 0, passed.stderr);
@@ -756,15 +800,18 @@ process.exit(mode.startsWith("nonzero") ? 1 : 0);
 for (const harness of ["claude", "codex", "grok"] as const) {
   test(`summarize: refuses to carry a skipped ${harness} rerun`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
+
     try {
       const dirs = stateDirs(root);
       fs.mkdirSync(dirs.results, { recursive: true });
       fs.mkdirSync(dirs.scorecards, { recursive: true });
+
       const original = JSON.stringify({
         ran_at: "2026-01-01T00:00:00.000Z",
         skills_tree_sha: "sha1",
         scenarios: [{ ...entry("a", "one", 0.9), harness }, entry("b", "two", 0.8)],
       });
+
       const paths = seedScorecards(dirs.scorecards, original);
       const suffix = harness === "claude" ? "" : `--${harness}`;
       fs.writeFileSync(
@@ -779,7 +826,10 @@ for (const harness of ["claude", "codex", "grok"] as const) {
       const result = runCli(["summarize", "--root", root, "--allow-mixed"]);
       assert.equal(result.rc, 1);
       assert.match(result.stderr, /skipped rerun.*refusing to carry/);
-      for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+
+      for (const out of paths) {
+        assert.equal(fs.readFileSync(out, "utf8"), original);
+      }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -789,28 +839,39 @@ for (const harness of ["claude", "codex", "grok"] as const) {
 for (const mode of ["reject", "override", "replace"] as const) {
   test(`summarize: ${mode} retained rows from another revision`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-summary-"));
+
     try {
       const dirs = stateDirs(root);
       fs.mkdirSync(dirs.results, { recursive: true });
       fs.mkdirSync(dirs.scorecards, { recursive: true });
+
       const original = JSON.stringify({
         skills_tree_sha: "old",
         scenarios: [entry("a", "one", 0.5, "old"), entry("b", "two", 0.9, "old")],
       });
+
       const paths = seedScorecards(dirs.scorecards, original);
       fs.writeFileSync(path.join(dirs.results, "unrelated--malformed.json"), "not JSON");
       writeResult(dirs.results, "a--one", 0.95, true, "new");
-      if (mode === "replace") writeResult(dirs.results, "b--two", 0.8, true, "new");
+
+      if (mode === "replace") {
+        writeResult(dirs.results, "b--two", 0.8, true, "new");
+      }
+
       const result = runCli([
         "summarize",
         "--root",
         root,
         ...(mode === "override" ? ["--allow-mixed"] : []),
       ]);
+
       if (mode === "reject") {
         assert.equal(result.rc, 1);
         assert.match(result.stderr, /multiple skills-tree revisions.*--allow-mixed/);
-        for (const out of paths) assert.equal(fs.readFileSync(out, "utf8"), original);
+
+        for (const out of paths) {
+          assert.equal(fs.readFileSync(out, "utf8"), original);
+        }
       } else {
         assert.equal(result.rc, 0, result.stderr);
         const out = paths.find((file) => fs.readFileSync(file, "utf8") !== original);
@@ -835,6 +896,7 @@ for (const mode of ["reject", "override", "replace"] as const) {
 
 test("generateRun: the scratch dir can resolve the agent SDK", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
+
   const { name, configPath } = generateRun(
     path.join(fixtures, "clean", "skills", "demo", "evals", "basic"),
     { harness: "claude", judgeModel: "claude-opus-5" },
@@ -845,27 +907,26 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
       skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     },
   );
+
   assert.equal(name, "demo--basic");
 
   const runDir = path.dirname(configPath);
-  // promptfoo resolves the provider SDK from the config's directory, which is
-  // in the consumer repo and has no node_modules of its own.
   const require = createRequire(path.join(runDir, "resolver.js"));
   assert.ok(
     require.resolve("@anthropic-ai/claude-agent-sdk"),
     "agent SDK must resolve from the scratch dir",
   );
   assert.ok(fs.lstatSync(path.join(runDir, "node_modules")).isSymbolicLink());
-  // codex-sdk exports no main entry, so its presence is checked by path.
   assert.ok(
     fs.existsSync(path.join(runDir, "node_modules", "@openai", "codex-sdk", "package.json")),
   );
 
-  // The link must not leak into the graded workdir or the manifest.
   assert.equal(fs.existsSync(path.join(runDir, "trial-1", "workdir", "node_modules")), false);
+
   const manifest = JSON.parse(
     fs.readFileSync(path.join(runDir, "trial-1", "manifest.json"), "utf8"),
   );
+
   assert.deepEqual(
     Object.keys(manifest).filter((k) => k.includes("node_modules")),
     [],
@@ -880,8 +941,10 @@ test("generateRun: the scratch dir can resolve the agent SDK", () => {
 
 test("generateRun: Grok installs the skill and uses its CLI provider", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-grok-"));
+
   try {
     const grokProviderPath = path.join(here, "..", "src", "grok-provider.ts");
+
     const { name, configPath } = generateRun(
       path.join(fixtures, "clean", "skills", "demo", "evals", "basic"),
       { harness: "grok", judgeModel: "claude-opus-5" },
@@ -892,6 +955,7 @@ test("generateRun: Grok installs the skill and uses its CLI provider", () => {
         skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
       },
     );
+
     assert.equal(name, "demo--basic--grok");
     const workdir = path.join(path.dirname(configPath), "trial-1", "workdir");
     assert.ok(fs.existsSync(path.join(workdir, ".grok", "skills", "demo", "SKILL.md")));
@@ -917,12 +981,14 @@ test("generateRun: Grok installs the skill and uses its CLI provider", () => {
 
 test("generateRun: a provider-qualified judge passes through, wrapped only for effort", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-scratch-"));
+
   const paths = {
     scratchDir: path.join(dir, "scratch"),
     transformPath: path.join(here, "..", "src", "transform.ts"),
     grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
     skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
   };
+
   const scenario = path.join(fixtures, "clean", "skills", "demo", "evals", "basic");
 
   const plain = generateRun(
@@ -930,6 +996,7 @@ test("generateRun: a provider-qualified judge passes through, wrapped only for e
     { harness: "claude", judgeModel: "openai:chat:gpt-5.6-sol" },
     paths,
   );
+
   const plainConfig = JSON.parse(fs.readFileSync(plain.configPath, "utf8"));
   assert.equal(plainConfig.defaultTest.options.provider, "openai:chat:gpt-5.6-sol");
 
@@ -938,6 +1005,7 @@ test("generateRun: a provider-qualified judge passes through, wrapped only for e
     { harness: "claude", judgeModel: "openai:chat:gpt-5.6-sol", judgeEffort: "high" },
     paths,
   );
+
   const effortConfig = JSON.parse(fs.readFileSync(withEffort.configPath, "utf8"));
   assert.deepEqual(effortConfig.defaultTest.options.provider, {
     id: "openai:chat:gpt-5.6-sol",
@@ -963,6 +1031,7 @@ test("cli: --judge-effort is validated against the judge's own levels", () => {
     "--judge-effort",
     "extreme",
   ]);
+
   assert.equal(badEffort.rc, 1);
   assert.match(badEffort.stderr, /must be minimal, low, medium, high, got extreme/);
 });
@@ -971,30 +1040,30 @@ test("sdkNodeModulesDir: points at a directory that really holds both SDKs", () 
   const dir = sdkNodeModulesDir();
   assert.ok(dir !== undefined);
   assert.equal(path.basename(dir), "node_modules");
-  // Both providers must be reachable through one link. codex-sdk has no
-  // resolvable main entry.
   assert.ok(fs.existsSync(path.join(dir, "@anthropic-ai", "claude-agent-sdk", "package.json")));
   assert.ok(fs.existsSync(path.join(dir, "@openai", "codex-sdk", "package.json")));
 });
 
+const evalOpts = (harness: "claude" | "codex" | "grok", judgeModel = "claude-opus-5") => ({
+  harness,
+  judgeModel,
+});
+
 test("requiredEvalPackages: per-harness peers, judge leg included", () => {
-  const opts = (harness: "claude" | "codex" | "grok", judgeModel = "claude-opus-5") => ({
-    harness,
-    judgeModel,
-  });
-  // The claude agent leg always needs the agent SDK.
-  assert.deepEqual(requiredEvalPackages(opts("claude"), true), [
+  assert.deepEqual(requiredEvalPackages(evalOpts("claude"), true), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
   ]);
-  // A bare judge without ANTHROPIC_API_KEY grades through the agent SDK.
-  assert.deepEqual(requiredEvalPackages(opts("codex"), false), [
+  assert.deepEqual(requiredEvalPackages(evalOpts("codex"), false), [
     "promptfoo",
     "@anthropic-ai/claude-agent-sdk",
     "@openai/codex-sdk",
   ]);
-  assert.deepEqual(requiredEvalPackages(opts("codex"), true), ["promptfoo", "@openai/codex-sdk"]);
-  assert.deepEqual(requiredEvalPackages(opts("grok"), true), ["promptfoo"]);
+  assert.deepEqual(requiredEvalPackages(evalOpts("codex"), true), [
+    "promptfoo",
+    "@openai/codex-sdk",
+  ]);
+  assert.deepEqual(requiredEvalPackages(evalOpts("grok"), true), ["promptfoo"]);
 });
 
 test("resolvePackageDir: installed peers resolve, absent packages are undefined", () => {
@@ -1004,8 +1073,9 @@ test("resolvePackageDir: installed peers resolve, absent packages are undefined"
   assert.equal(resolvePackageDir("@uinaf/no-such-package-ever"), undefined);
 });
 
-function runCli(args: string[], cwd?: string): { rc: number; stdout: string; stderr: string } {
+function runCli(args: Array<string>, cwd?: string): { rc: number; stdout: string; stderr: string } {
   const r = spawnSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8" });
+
   return { rc: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
 }
 
@@ -1028,25 +1098,30 @@ test("lint: broken fixture tree fails with each finding named", () => {
     /^skills\/wrongname\/evals\/\.dotted\/task\.md: task names skill wrongname$/m,
   );
   assert.match(r.stderr, /skill lint: 6 error\(s\) across 1 package\(s\)/);
-  // Every finding is named relative to the linted root, not by absolute path.
   const findings = r.stderr.trim().split("\n").slice(0, -1);
   assert.equal(findings.length, 6);
-  for (const line of findings) assert.match(line, /^skills\/wrongname\/\S+: \S/);
+
+  for (const line of findings) {
+    assert.match(line, /^skills\/wrongname\/\S+: \S/);
+  }
 });
 
 test("lint: a criteria.json that run would reject is a finding on that file", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-criteria-"));
+
   try {
     fs.cpSync(path.join(fixtures, "clean"), dir, { recursive: true });
     const evals = path.join(dir, "skills", "demo", "evals");
     const good = fs.readFileSync(path.join(evals, "basic", "criteria.json"), "utf8");
     const base = JSON.parse(good);
     const item = { name: "outcome-first", description: "Opens with the outcome.", max_score: 2 };
+
     const without = (key: string) =>
       JSON.stringify({
         ...base,
         checklist: [item, Object.fromEntries(Object.entries(item).filter(([k]) => k !== key))],
       });
+
     const cases: Record<string, [string, string]> = {
       truncated: [good.slice(0, good.length / 2), "not valid JSON: "],
       "no-name": [without("name"), "checklist[1].name must be a non-empty string"],
@@ -1060,10 +1135,12 @@ test("lint: a criteria.json that run would reject is a finding on that file", ()
         'install names "nope", not another model-invocable skill under the root',
       ],
     };
+
     for (const [name, [text]] of Object.entries(cases)) {
       fs.cpSync(path.join(evals, "basic"), path.join(evals, name), { recursive: true });
       fs.writeFileSync(path.join(evals, name, "criteria.json"), text);
     }
+
     const r = runCli(["lint", dir]);
     assert.equal(r.rc, 1);
     const lines = r.stderr.trim().split("\n");
@@ -1071,6 +1148,7 @@ test("lint: a criteria.json that run would reject is a finding on that file", ()
       lines.pop(),
       `skill lint: ${Object.keys(cases).length} error(s) across 2 package(s)`,
     );
+
     for (const [name, [, message]] of Object.entries(cases)) {
       const prefix = `skills/demo/evals/${name}/criteria.json: `;
       const line = lines.find((l) => l.startsWith(prefix));
@@ -1102,7 +1180,6 @@ test("lint: a root with no skills tree lints nothing and passes", () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// npm invokes installed bins through node_modules/.bin symlinks.
 for (const entry of ["src/cli.ts", "dist/cli.js"]) {
   test(`cli: invoked through a symlink, ${entry} still runs`, () => {
     const target = path.join(here, "..", entry);
@@ -1110,9 +1187,11 @@ for (const entry of ["src/cli.ts", "dist/cli.js"]) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-bin-"));
     const link = path.join(dir, "skillcheck");
     fs.symlinkSync(target, link);
+
     const r = spawnSync(process.execPath, [link, "lint", path.join(fixtures, "clean")], {
       encoding: "utf8",
     });
+
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /skill lint: 2 package\(s\) clean/);
     fs.rmSync(dir, { recursive: true, force: true });

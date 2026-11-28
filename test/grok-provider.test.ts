@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { test } from "vite-plus/test";
 import GrokProvider from "../src/grok-provider.ts";
 
-function fixture(events: unknown[] | ((skillFile: string) => unknown[])): {
+function fixture(events: Array<unknown> | ((skillFile: string) => Array<unknown>)): {
   dir: string;
   command: string;
   skillFile: string;
@@ -20,6 +21,7 @@ function fixture(events: unknown[] | ((skillFile: string) => unknown[])): {
     `#!${process.execPath}\nfor (const event of ${JSON.stringify(typeof events === "function" ? events(skillFile) : events)}) process.stdout.write(JSON.stringify(event) + '\\n');\n`,
   );
   fs.chmodSync(command, 0o755);
+
   return { dir, command, skillFile };
 }
 
@@ -49,10 +51,12 @@ for (const pathField of ["target_file", "path"] as const) {
         total_cost_usd: 0.01,
       },
     ]);
+
     try {
       const result = await new GrokProvider({
         config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
       }).callApi("Use the signal skill");
+
       assert.deepEqual(result, {
         output: "BLUE-ORBIT",
         metadata: {
@@ -86,10 +90,12 @@ test("Grok provider does not count failed or out-of-workdir reads", async () => 
     { type: "text", data: "done" },
     { type: "end", stopReason: "end_turn" },
   ]);
+
   try {
     const result = await new GrokProvider({
       config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
     }).callApi("task");
+
     assert.deepEqual(result, { output: "done", metadata: { skillCalls: [] } });
   } finally {
     fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
@@ -98,10 +104,12 @@ test("Grok provider does not count failed or out-of-workdir reads", async () => 
 
 test("Grok provider treats an incomplete turn as an error", async () => {
   const fixtureRun = fixture([{ type: "end", stopReason: "cancelled" }]);
+
   try {
     const result = await new GrokProvider({
       config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
     }).callApi("task");
+
     assert.match(result.error ?? "", /grok stopped with cancelled/);
   } finally {
     fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
@@ -112,25 +120,39 @@ test("Grok provider keeps a multibyte character split across stdout chunks", asy
   const fixtureRun = fixture([]);
   const text = JSON.stringify({ type: "text", data: "café ☕" }) + "\n";
   const end = JSON.stringify({ type: "end", stopReason: "end_turn" }) + "\n";
-  // Split inside the three-byte "☕" and pause so the halves arrive as separate chunks.
   const split = Buffer.from(text).indexOf(Buffer.from("☕")) + 1;
   fs.writeFileSync(
     fixtureRun.command,
     `#!${process.execPath}\nconst bytes = Buffer.from(${JSON.stringify(text + end)});\nprocess.stdout.write(bytes.subarray(0, ${split}));\nsetTimeout(() => process.stdout.write(bytes.subarray(${split})), 100);\n`,
   );
+
   try {
     const result = await new GrokProvider({
       config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
     }).callApi("task");
+
     assert.deepEqual(result, { output: "café ☕", metadata: { skillCalls: [] } });
   } finally {
     fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
   }
 });
 
-for (const stdio of ["ignore", "inherit"] as const)
+const killQuietly = (pid: number): boolean => {
+  try {
+    process.kill(pid, "SIGKILL");
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+for (const stdio of ["ignore", "inherit"] as const) {
   test(`Grok provider stops helpers with ${stdio} stdio`, async () => {
-    if (process.platform === "win32") return;
+    if (process.platform === "win32") {
+      return;
+    }
+
     const fixtureRun = fixture([]);
     const pidFile = path.join(fixtureRun.dir, "helper.pid");
     fs.writeFileSync(
@@ -138,18 +160,21 @@ for (const stdio of ["ignore", "inherit"] as const)
       `#!${process.execPath}\nconst { spawn } = require("node:child_process");\nconst fs = require("node:fs");\nconst helper = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: ${JSON.stringify(stdio)} });\nfs.writeFileSync(${JSON.stringify(pidFile)}, String(helper.pid));\nhelper.unref();\nprocess.stdout.write(JSON.stringify({ type: "end", stopReason: "end_turn" }) + "\\n");\n`,
     );
     let helperPid: number | undefined;
+
     try {
       const result = await new GrokProvider({
         config: {
           working_dir: fixtureRun.dir,
           skill: "signal",
           command: fixtureRun.command,
-          timeout_ms: 1_000,
+          timeout_ms: 1000,
         },
       }).callApi("task");
+
       assert.equal(result.error, undefined);
       helperPid = Number(fs.readFileSync(pidFile, "utf8"));
       let alive = true;
+
       for (let attempt = 0; attempt < 20; attempt++) {
         try {
           process.kill(helperPid, 0);
@@ -157,20 +182,20 @@ for (const stdio of ["ignore", "inherit"] as const)
           alive = false;
           break;
         }
-        await new Promise((resolve) => setTimeout(resolve, 25));
+
+        await sleep(25);
       }
+
       assert.equal(alive, false, "a successful run must not leave its helper alive");
     } finally {
       if (helperPid !== undefined) {
-        try {
-          process.kill(helperPid, "SIGKILL");
-        } catch {
-          // The provider already stopped it.
-        }
+        killQuietly(helperPid);
       }
+
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
     }
   });
+}
 
 for (const event of [
   null,
@@ -191,15 +216,17 @@ for (const event of [
 ]) {
   test(`Grok provider rejects malformed event ${JSON.stringify(event)}`, async () => {
     const fixtureRun = fixture([event, { type: "end", stopReason: "end_turn" }]);
+
     try {
       const result = await new GrokProvider({
         config: {
           working_dir: fixtureRun.dir,
           skill: "signal",
           command: fixtureRun.command,
-          timeout_ms: 1_000,
+          timeout_ms: 1000,
         },
       }).callApi("task");
+
       assert.deepEqual(result, { error: "grok emitted an invalid streaming event" });
     } finally {
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
@@ -220,10 +247,12 @@ for (const event of [
       { type: "text", data: "done" },
       { type: "end", stopReason: "end_turn" },
     ]);
+
     try {
       const result = await new GrokProvider({
         config: { working_dir: fixtureRun.dir, skill: "signal", command: fixtureRun.command },
       }).callApi("task");
+
       assert.deepEqual(result, { output: "done", metadata: { skillCalls: [] } });
     } finally {
       fs.rmSync(fixtureRun.dir, { recursive: true, force: true });
