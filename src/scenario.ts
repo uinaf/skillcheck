@@ -72,30 +72,37 @@ export interface RunPaths {
 
 export function loadScenario(scenarioDir: string): Scenario {
   const match = scenarioDir.match(/skills\/([^/]+)\/evals\/([^/]+)$/);
+
   if (!match) {
     throw new Error(
       `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
     );
   }
+
   const [, skill, scenario] = match;
 
   const taskMd = fs.readFileSync(path.join(scenarioDir, "task.md"), "utf8");
   const skillDir = path.resolve(scenarioDir, "../..");
   const hidden = isHiddenSkill(fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"));
   let parsed: { criteria: Criteria; alternatives: Array<string> };
+
   try {
     parsed = parseCriteria(scenarioDir, hidden);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`${path.join(scenarioDir, "criteria.json")}: ${message}`, { cause: err });
   }
+
   const { criteria, alternatives } = parsed;
 
   const files: Scenario["files"] = [];
+
   const task = taskMd.replace(FILE_BLOCK, (_, name: string, content: string) => {
     files.push({ name: name.trim(), content: content + "\n" });
+
     return `(Input file \`${name.trim()}\` is available in your working directory.)`;
   });
+
   // Hidden skills only ever run from an explicit user invocation, so the eval
   // task carries one; materialize() strips the flag from the installed copy.
   const prompt = hidden ? `Use the ${skill} skill for this task.\n\n${task}` : task;
@@ -122,6 +129,7 @@ export function parseCriteria(
 ): { criteria: Criteria; alternatives: Array<string> } {
   const text = fs.readFileSync(path.join(scenarioDir, "criteria.json"), "utf8");
   let criteria: Criteria;
+
   try {
     criteria = JSON.parse(text);
   } catch (err) {
@@ -129,36 +137,46 @@ export function parseCriteria(
       cause: err,
     });
   }
+
   if (typeof criteria !== "object" || criteria === null || Array.isArray(criteria)) {
     throw new Error("must be a JSON object");
   }
+
   if (criteria.type !== "weighted_checklist") {
     throw new Error(`type must be "weighted_checklist", got ${JSON.stringify(criteria.type)}`);
   }
+
   if (!Array.isArray(criteria.checklist) || criteria.checklist.length === 0) {
     throw new Error("checklist must be a non-empty array");
   }
+
   if (
     criteria.skill_use !== undefined &&
     !["required", "optional", "forbidden"].includes(criteria.skill_use)
   ) {
     throw new Error(`skill_use must be "required", "optional", or "forbidden"`);
   }
+
   for (const [i, item] of criteria.checklist.entries()) {
     for (const key of ["name", "description"] as const) {
       const value: unknown = item?.[key];
+
       if (typeof value !== "string" || value.trim() === "") {
         throw new Error(`checklist[${i}].${key} must be a non-empty string`);
       }
     }
+
     if (!Number.isFinite(item.max_score) || item.max_score <= 0) {
       throw new Error(`checklist[${i}].max_score must be a positive number`);
     }
   }
+
   if (hidden && (criteria.skill_use === "forbidden" || criteria.install !== undefined)) {
     throw new Error("a hidden skill is always invoked, so it has no routing to test");
   }
+
   const alternatives = resolveInstall(path.resolve(scenarioDir, "../.."), criteria.install);
+
   return { criteria, alternatives };
 }
 
@@ -170,11 +188,14 @@ function resolveInstall(skillDir: string, install: Criteria["install"]): Array<s
   if (install === undefined) {
     return [];
   }
+
   const skillsRoot = path.dirname(skillDir);
   const self = path.basename(skillDir);
+
   const invocable = (name: string): boolean => {
     const dir = path.join(skillsRoot, name);
     const md = path.join(dir, "SKILL.md");
+
     return (
       name !== self &&
       !name.startsWith(".") &&
@@ -183,16 +204,21 @@ function resolveInstall(skillDir: string, install: Criteria["install"]): Array<s
       !isHiddenSkill(fs.readFileSync(md, "utf8"))
     );
   };
+
   if (install === "all") {
     const all = fs.readdirSync(skillsRoot).filter(invocable).sort();
+
     if (all.length === 0) {
       throw new Error(`install "all" finds no other model-invocable skill`);
     }
+
     return all;
   }
+
   if (!Array.isArray(install) || install.length === 0) {
     throw new Error(`install must be "all" or a non-empty list of skills`);
   }
+
   for (const name of install) {
     if (typeof name !== "string" || name.includes("/") || !invocable(name)) {
       throw new Error(
@@ -200,6 +226,7 @@ function resolveInstall(skillDir: string, install: Criteria["install"]): Array<s
       );
     }
   }
+
   return [...new Set(install)].sort();
 }
 
@@ -214,24 +241,29 @@ export function encodeRunNamePart(part: string): string {
   ) {
     return part;
   }
+
   return `~v2~${encodeURIComponent(part).replaceAll("-", "%2D").replaceAll("~", "%7E")}`;
 }
 
 export function runNameFor(scenarioDir: string, harness: Harness, control = false): string {
   const m = path.resolve(scenarioDir).match(/skills\/([^/]+)\/evals\/([^/]+)$/);
+
   if (!m) {
     throw new Error(
       `not a scenario dir (want .../skills/<skill>/evals/<scenario>): ${scenarioDir}`,
     );
   }
+
   const name = `${encodeRunNamePart(m[1])}--${encodeRunNamePart(m[2])}`;
   // A control result is identified by its sidecars; the suffix only keeps the
   // filename apart from the same scenario's skill run. Escaped parts never
   // contain "--", so it cannot collide with a scenario name.
   const full = `${harness === "claude" ? name : `${name}--${harness}`}${control ? "--control" : ""}`;
+
   if (Buffer.byteLength(`${full}.json.attempt`) <= 255) {
     return full;
   }
+
   return `~v3~${createHash("sha256")
     .update(JSON.stringify(control ? [m[1], m[2], harness, "control"] : [m[1], m[2], harness]))
     .digest("hex")}`;
@@ -241,18 +273,23 @@ export function runNameFor(scenarioDir: string, harness: Harness, control = fals
 // may mention the key without changing invocation behavior.
 function frontmatterRange(text: string): [number, number] | null {
   const lines = text.split("\n");
+
   if (lines[0] !== "---") {
     return null;
   }
+
   const close = lines.indexOf("---", 1);
+
   return close === -1 ? null : [1, close];
 }
 
 export function isHiddenSkill(skillMd: string): boolean {
   const range = frontmatterRange(skillMd);
+
   if (!range) {
     return false;
   }
+
   return skillMd
     .split("\n")
     .slice(range[0], range[1])
@@ -261,13 +298,17 @@ export function isHiddenSkill(skillMd: string): boolean {
 
 export function stripHiddenFlag(skillMd: string): string {
   const range = frontmatterRange(skillMd);
+
   if (!range) {
     return skillMd;
   }
+
   const lines = skillMd.split("\n");
+
   const kept = lines.filter(
     (l, i) => !(i >= range[0] && i < range[1] && l.startsWith("disable-model-invocation:")),
   );
+
   return kept.join("\n");
 }
 
@@ -299,42 +340,54 @@ export function linkedSiblings(skillDir: string): Array<string> {
   const self = path.basename(skillDir);
   const found = new Set([self]);
   const pending = [skillDir];
+
   for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
     for (const file of skillMarkdown(dir)) {
       for (const m of fs.readFileSync(file, "utf8").matchAll(MARKDOWN_LINK)) {
         const href = m[1] ?? m[2] ?? m[3];
+
         if (href.startsWith("#") || /^[a-z][a-z0-9+.-]*:/i.test(href)) {
           continue;
         }
+
         const target = path.resolve(path.dirname(file), href.split("#")[0]);
         const rel = path.relative(skillsRoot, target);
         const name = rel.split(path.sep)[0];
+
         if (name === "" || name === ".." || path.isAbsolute(rel) || found.has(name)) {
           continue;
         }
+
         if (!fs.existsSync(path.join(skillsRoot, name, "SKILL.md"))) {
           continue;
         }
+
         // A symlinked sibling must not pull in a tree from outside the root,
         // or be an alias of the skill itself.
         const real = fs.realpathSync(path.join(skillsRoot, name));
+
         if (path.dirname(real) !== realRoot || real === realSelf) {
           continue;
         }
+
         found.add(name);
         pending.push(path.join(skillsRoot, name));
       }
     }
   }
+
   found.delete(self);
+
   return [...found].sort();
 }
 
 function skillMarkdown(dir: string): Array<string> {
   const out: Array<string> = [];
+
   const walk = (d: string): void => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
       const p = path.join(d, e.name);
+
       if (e.isDirectory()) {
         if (!(d === dir && e.name === "evals")) {
           walk(p);
@@ -344,7 +397,9 @@ function skillMarkdown(dir: string): Array<string> {
       }
     }
   };
+
   walk(dir);
+
   return out;
 }
 
@@ -365,21 +420,28 @@ export function materialize(
   // stay strictly below workdir, must not land under .claude/ or .agents/ (a
   // fixture could inject settings the harness would load), and must not collide.
   const seen = new Set<string>();
+
   const planned = s.files.map((f) => {
     const dest = path.resolve(workdir, f.name);
     const rel = path.relative(workdir, dest);
+
     if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
       throw new Error(`embedded file escapes workdir: ${f.name}`);
     }
+
     if (RESERVED.has(rel.split(path.sep)[0])) {
       throw new Error(`embedded file targets reserved dir: ${f.name}`);
     }
+
     if (seen.has(dest)) {
       throw new Error(`duplicate embedded file: ${f.name}`);
     }
+
     seen.add(dest);
+
     return { dest, content: f.content };
   });
+
   for (const { dest, content } of planned) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.writeFileSync(dest, content);
@@ -396,10 +458,12 @@ export function materialize(
       : harness === "grok"
         ? [".grok"]
         : [".claude"];
+
   // Sibling skills it links to come along so those links resolve, as they do
   // when the plugin installs the set together; so do the scenario's
   // alternatives and their own links.
   const skillsRoot = path.dirname(s.skillDir);
+
   const installed = control
     ? []
     : [
@@ -409,6 +473,7 @@ export function materialize(
           ...s.alternatives.flatMap((a) => [a, ...linkedSiblings(path.join(skillsRoot, a))]),
         ]),
       ];
+
   for (const root of roots) {
     for (const name of installed) {
       // From the real directory, so a symlinked sibling is copied, evals
@@ -420,11 +485,13 @@ export function materialize(
           if (src === path.join(from, "evals")) {
             return false;
           }
+
           // cpSync preserves links back to source files, bypassing eval exclusion
           // and allowing writes through the installed copy to change the source.
           if (fs.lstatSync(src).isSymbolicLink()) {
             throw new Error(`skill contains a symbolic link: ${src}`);
           }
+
           return true;
         },
       });
@@ -439,6 +506,7 @@ export function materialize(
     const skillMd = path.join(workdir, root, "skills", s.skill, "SKILL.md");
     const text = fs.readFileSync(skillMd, "utf8");
     const stripped = stripHiddenFlag(text);
+
     if (stripped !== text) {
       fs.writeFileSync(skillMd, stripped);
     }
@@ -448,9 +516,11 @@ export function materialize(
   // wrote. SKIPPED_DIRS are excluded (matching transform.ts's walk); Codex's
   // .agents/ files are hashed as inputs.
   const manifest: Record<string, string> = {};
+
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
+
       if (e.isDirectory()) {
         if (!SKIPPED_DIRS.has(e.name)) {
           walk(p);
@@ -462,10 +532,12 @@ export function materialize(
       }
     }
   };
+
   walk(workdir);
   const manifestPath = path.join(runDir, "manifest.json");
   // Owner-only: in the isolated image the agent runs as another user.
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), { mode: 0o600 });
+
   return { workdir, manifestPath };
 }
 
@@ -476,6 +548,7 @@ function agentProvider(
   paths: RunPaths,
 ): object {
   const [skill] = skills;
+
   if (opts.harness === "grok") {
     return {
       id: `file://${paths.grokProviderPath}`,
@@ -486,6 +559,7 @@ function agentProvider(
       },
     };
   }
+
   if (opts.harness === "codex") {
     return {
       id: "openai:codex-sdk",
@@ -509,6 +583,7 @@ function agentProvider(
       },
     };
   }
+
   return {
     id: "anthropic:claude-agent-sdk",
     config: {
@@ -663,20 +738,24 @@ const SDK_PACKAGES = ["@anthropic-ai/claude-agent-sdk", "@openai/codex-sdk"];
 export function sdkNodeModulesDir(): string | undefined {
   for (const pkg of SDK_PACKAGES) {
     const dir = holdingNodeModules(pkg);
+
     if (dir !== undefined) {
       return dir;
     }
   }
+
   return undefined;
 }
 
 function holdingNodeModules(pkg: string): string | undefined {
   const require = createRequire(import.meta.url);
+
   for (const dir of require.resolve.paths(pkg) ?? []) {
     if (fs.existsSync(path.join(dir, pkg, "package.json"))) {
       return dir;
     }
   }
+
   return undefined;
 }
 
@@ -685,6 +764,7 @@ function holdingNodeModules(pkg: string): string | undefined {
 // valid result.
 export function resolvePackageDir(pkg: string): string | undefined {
   const dir = holdingNodeModules(pkg);
+
   return dir === undefined ? undefined : path.join(dir, pkg);
 }
 
@@ -695,12 +775,15 @@ export function resolvePackageDir(pkg: string): string | undefined {
 export function requiredEvalPackages(opts: RunOptions, hasAnthropicKey: boolean): Array<string> {
   const pkgs = ["promptfoo"];
   const sdkJudge = !opts.judgeModel.includes(":") && !hasAnthropicKey;
+
   if (opts.harness === "claude" || sdkJudge) {
     pkgs.push("@anthropic-ai/claude-agent-sdk");
   }
+
   if (opts.harness === "codex") {
     pkgs.push("@openai/codex-sdk");
   }
+
   return pkgs;
 }
 
@@ -711,8 +794,10 @@ export function privateCodexHome(dir: string): void {
   const source = process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+
   for (const file of ["config.toml", "auth.json"]) {
     const from = path.join(source, file);
+
     if (fs.existsSync(from)) {
       fs.symlinkSync(from, path.join(dir, file));
     }
@@ -724,14 +809,17 @@ export function privateCodexHome(dir: string): void {
 // every entry of the operator's home except those agent roots, so auth helpers
 // that read $HOME keep working and no user skill or guidance shows.
 const HIDDEN_HOME_ENTRIES = new Set([".agents", ".claude", ".codex"]);
+
 export function privateHome(dir: string): void {
   const source = os.homedir();
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+
   for (const name of fs.readdirSync(source)) {
     if (HIDDEN_HOME_ENTRIES.has(name)) {
       continue;
     }
+
     fs.symlinkSync(path.join(source, name), path.join(dir, name));
   }
 }
@@ -743,26 +831,33 @@ export function privateHome(dir: string): void {
 export function handOverToAgent(runDir: string, trials: Array<TrialDir>): void {
   const uid = Number(process.env.SKILLCHECK_AGENT_UID);
   const gid = Number(process.env.SKILLCHECK_AGENT_GID ?? process.env.SKILLCHECK_AGENT_UID);
+
   if (!Number.isInteger(uid) || !Number.isInteger(gid)) {
     throw new Error("isolated run without SKILLCHECK_AGENT_UID: refusing to run the agent as root");
   }
+
   const own = (p: string): void => {
     fs.lchownSync(p, uid, gid);
+
     if (fs.lstatSync(p).isDirectory()) {
       for (const e of fs.readdirSync(p)) {
         own(path.join(p, e));
       }
     }
   };
+
   for (const dir of [path.dirname(runDir), runDir]) {
     fs.chmodSync(dir, 0o711);
   }
+
   for (const t of trials) {
     fs.chmodSync(path.dirname(t.workdir), 0o711);
     own(t.workdir);
   }
+
   for (const home of ["codex-home", "home"]) {
     const p = path.join(runDir, home);
+
     if (fs.existsSync(p)) {
       own(p);
     }
@@ -775,6 +870,7 @@ export function generateRun(
   paths: RunPaths,
 ): { name: string; configPath: string; skill: string; scenario: string } {
   const s = loadScenario(scenarioDir);
+
   // Grok reports a load only for a file-tool read of the exact path, so a
   // missed load would pass a near miss.
   if (opts.harness === "grok" && s.criteria.skill_use === "forbidden") {
@@ -782,9 +878,11 @@ export function generateRun(
       `grok cannot evidence a skill load reliably enough for skill_use "forbidden": ${scenarioDir}`,
     );
   }
+
   const name = runNameFor(scenarioDir, opts.harness, opts.control);
   const runDir = path.join(paths.scratchDir, name);
   fs.rmSync(runDir, { recursive: true, force: true });
+
   const trials = Array.from({ length: opts.trials ?? 1 }, (_, i) =>
     materialize(s, path.join(runDir, trialLabel(i)), opts.harness, opts.control),
   );
@@ -797,6 +895,7 @@ export function generateRun(
   // promptfoo resolves provider SDKs from the generated config directory. The
   // link stays outside workdir, hidden from the agent and its manifest.
   const sdkDir = sdkNodeModulesDir();
+
   if (sdkDir !== undefined) {
     const link = path.join(runDir, "node_modules");
     fs.rmSync(link, { recursive: true, force: true });
@@ -807,8 +906,10 @@ export function generateRun(
   const configPath = path.join(runDir, "promptfooconfig.json");
   // The config carries the grading criteria; the agent must never read it.
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2), { mode: 0o600 });
+
   if (isIsolated()) {
     handOverToAgent(runDir, trials);
   }
+
   return { name, configPath, skill: s.skill, scenario: s.scenario };
 }

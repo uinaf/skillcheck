@@ -119,7 +119,6 @@ export default defineConfig({
       "anti-slop/require-safety-comment-for-type-assertion": "off",
       "uinaf/no-comments": "off",
       "quality/no-known-value-widening": "off",
-      "anti-slop/require-readable-spacing": "off",
       "unicorn/prefer-import-meta-properties": "off",
       "unicorn/numeric-separators-style": "off",
       "unicorn/catch-error-name": "off",

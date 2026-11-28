@@ -44,39 +44,49 @@ function isGrokEvent(value: unknown): value is GrokEvent {
   if (!record(value) || typeof value.type !== "string") {
     return false;
   }
+
   if (value.type === "text") {
     return typeof value.data === "string";
   }
+
   if (value.type === "tool_call" && value.toolName === "read_file") {
     if (typeof value.toolCallId !== "string") {
       return false;
     }
+
     const input = value.rawInput;
+
     if (input === undefined || input === null) {
       return true;
     }
+
     return (
       record(input) &&
       (input.target_file === undefined || typeof input.target_file === "string") &&
       (input.path === undefined || typeof input.path === "string")
     );
   }
+
   if (value.type === "tool_call_update") {
     return (
       typeof value.toolCallId === "string" &&
       (value.status === undefined || value.status === null || typeof value.status === "string")
     );
   }
+
   if (value.type !== "end") {
     return true;
   }
+
   if (typeof value.stopReason !== "string") {
     return false;
   }
+
   if (value.usage !== undefined) {
     if (!record(value.usage)) {
       return false;
     }
+
     for (const key of [
       "input_tokens",
       "output_tokens",
@@ -88,6 +98,7 @@ function isGrokEvent(value: unknown): value is GrokEvent {
       }
     }
   }
+
   return value.total_cost_usd === undefined || nonnegativeNumber(value.total_cost_usd);
 }
 
@@ -96,6 +107,7 @@ const OUTPUT_CAP = 1_000_000;
 
 function within(root: string, file: string): boolean {
   const rel = path.relative(root, file);
+
   return rel !== "" && rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
 }
 
@@ -106,6 +118,7 @@ export default class GrokProvider {
     if (!options.config?.working_dir || !options.config.skill) {
       throw new Error("grok provider requires working_dir and skill");
     }
+
     this.config = options.config;
   }
 
@@ -131,7 +144,9 @@ export default class GrokProvider {
       command = "grok",
       timeout_ms = 600_000,
     } = this.config;
+
     const skillFile = path.join(workdir, ".grok", "skills", skill, "SKILL.md");
+
     const args = [
       "--trust",
       "--no-auto-update",
@@ -146,12 +161,14 @@ export default class GrokProvider {
       "-p",
       prompt,
     ];
+
     return new Promise((resolve) => {
       const child = spawn(command, args, {
         cwd: workdir,
         detached: process.platform !== "win32",
         stdio: ["ignore", "pipe", "pipe"],
       });
+
       let stdout = "";
       let stderr = "";
       let output = "";
@@ -164,6 +181,7 @@ export default class GrokProvider {
 
       const stop = (reason: string): void => {
         error ??= reason;
+
         if (child.pid !== undefined) {
           try {
             if (process.platform === "win32") {
@@ -176,36 +194,47 @@ export default class GrokProvider {
           }
         }
       };
+
       const consume = (line: string): void => {
         if (!line.trim()) {
           return;
         }
+
         let event: unknown;
+
         try {
           event = JSON.parse(line);
         } catch {
           stop("grok emitted invalid streaming JSON");
+
           return;
         }
+
         if (!isGrokEvent(event)) {
           stop("grok emitted an invalid streaming event");
+
           return;
         }
+
         if (event.type === "text" && typeof event.data === "string") {
           output += event.data;
+
           if (output.length > OUTPUT_CAP) {
             stop("grok output exceeded limit");
           }
         } else if (event.type === "tool_call" && event.toolName === "read_file") {
           const target = event.rawInput?.target_file ?? event.rawInput?.path;
+
           if (event.toolCallId && typeof target === "string") {
             const resolved = path.resolve(workdir, target);
+
             if (within(workdir, resolved)) {
               reads.set(event.toolCallId, resolved);
             }
           }
         } else if (event.type === "tool_call_update" && event.status === "completed") {
           const target = event.toolCallId && reads.get(event.toolCallId);
+
           if (target === skillFile && !skillCalls.some((call) => call.path === target)) {
             skillCalls.push({ name: skill, source: "project", path: target });
           }
@@ -215,17 +244,22 @@ export default class GrokProvider {
           cost = event.total_cost_usd;
         }
       };
+
       // Decode on the stream so a multibyte character split across chunks
       // survives intact.
       child.stdout?.setEncoding("utf8");
       child.stderr?.setEncoding("utf8");
       child.stdout?.on("data", (chunk: string) => {
         stdout += chunk;
+
         if (stdout.length > OUTPUT_CAP) {
           stop("grok event stream exceeded limit");
+
           return;
         }
+
         let newline = stdout.indexOf("\n");
+
         while (newline !== -1) {
           consume(stdout.slice(0, newline));
           stdout = stdout.slice(newline + 1);
@@ -241,9 +275,11 @@ export default class GrokProvider {
       const timer = setTimeout(() => stop(`grok timed out after ${timeout_ms}ms`), timeout_ms);
       const abort = () => stop("grok run aborted");
       callOptions?.abortSignal?.addEventListener("abort", abort, { once: true });
+
       if (callOptions?.abortSignal?.aborted) {
         abort();
       }
+
       child.on("exit", () => {
         // The CLI may exit while helpers remain in its detached process group.
         if (process.platform !== "win32" && child.pid !== undefined) {
@@ -257,9 +293,11 @@ export default class GrokProvider {
       child.on("close", (code, signal) => {
         clearTimeout(timer);
         callOptions?.abortSignal?.removeEventListener("abort", abort);
+
         if (stdout) {
           consume(stdout);
         }
+
         if (error) {
           resolve({ error });
         } else if (code !== 0) {

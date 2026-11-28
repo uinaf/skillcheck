@@ -38,17 +38,21 @@ function real(file: string): string | undefined {
 export function skillEvidence(context: EvidenceContext): string | undefined {
   const skill = context.config?.skill;
   const workdir = context.vars.workdir;
+
   if (typeof skill !== "string" || typeof workdir !== "string") {
     return undefined;
   }
+
   const calls = (value: unknown): Array<Call> =>
     Array.isArray(value) ? value.filter((c): c is Call => c !== null && typeof c === "object") : [];
 
   // context.metadata is promptfoo's shortcut for providerResponse.metadata.
   const metadata = context.metadata ?? context.providerResponse?.metadata;
+
   const skillCall = calls(metadata?.skillCalls).find(
     (c) => c.name === skill && c.is_error !== true,
   );
+
   if (skillCall) {
     return `skill call ${skill}`;
   }
@@ -58,26 +62,36 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
       (p): p is string => p !== undefined,
     ),
   );
+
   // A completed read carries is_error: false and its output. The named path
   // must itself be inside the workdir: the installed copy may be a symlink
   // back to the skill's source, which is not what the agent was handed.
   const root = real(workdir) ?? workdir;
+
   const read = calls(metadata?.toolCalls).find((c) => {
     if (c.name !== "Read" || c.is_error !== false || typeof c.output !== "string") {
       return false;
     }
+
     const file = c.input?.file_path;
+
     if (typeof file !== "string") {
       return false;
     }
+
     const named = path.resolve(workdir, file);
+
     const inside = [workdir, root].some((w) => {
       const rel = path.relative(w, named);
+
       return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel);
     });
+
     const target = real(named);
+
     return inside && target !== undefined && installed.has(target);
   });
+
   if (read) {
     return `read of the installed ${skill}/SKILL.md`;
   }
@@ -89,6 +103,7 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   const opening = [...installed]
     .map((p) => fs.readFileSync(p, "utf8").slice(0, 300).trim())
     .filter((t) => t.length >= 40);
+
   const shown = calls(metadata?.toolCalls).find(
     (c) =>
       c.name === "Bash" &&
@@ -96,6 +111,7 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
       typeof c.output === "string" &&
       opening.some((t) => (c.output as string).includes(t)),
   );
+
   if (shown) {
     return `shell read of the installed ${skill}/SKILL.md`;
   }
@@ -106,14 +122,17 @@ export function skillEvidence(context: EvidenceContext): string | undefined {
   const printed = codexCommandOutputs(context.providerResponse?.raw).some((out) =>
     opening.some((t) => out.includes(t)),
   );
+
   if (printed) {
     return `shell read of the installed ${skill}/SKILL.md`;
   }
+
   return undefined;
 }
 
 function codexCommandOutputs(raw: unknown): Array<string> {
   let parsed: unknown = raw;
+
   if (typeof raw === "string") {
     try {
       parsed = JSON.parse(raw);
@@ -121,10 +140,13 @@ function codexCommandOutputs(raw: unknown): Array<string> {
       return [];
     }
   }
+
   const items = (parsed as { items?: unknown } | null)?.items;
+
   if (!Array.isArray(items)) {
     return [];
   }
+
   return items.flatMap((item: { type?: unknown; aggregated_output?: unknown } | null) =>
     item?.type === "command_execution" && typeof item.aggregated_output === "string"
       ? [item.aggregated_output]
@@ -144,6 +166,7 @@ export default function assertSkillUsed(
   const required = !forbidden && context.config?.required !== false;
   const used = evidence !== undefined;
   const skill = String(context.config?.skill);
+
   return {
     pass: forbidden ? !used : used || !required,
     score: used ? 1 : 0,

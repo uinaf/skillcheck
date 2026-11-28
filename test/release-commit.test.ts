@@ -9,6 +9,7 @@ import { prepare } from "../scripts/release-commit.ts";
 
 const git = (cwd: string, ...args: Array<string>) =>
   execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
 const commit = (cwd: string) => {
   git(cwd, "add", ".");
   git(
@@ -23,8 +24,10 @@ const commit = (cwd: string) => {
     "-m",
     "fixture",
   );
+
   return git(cwd, "rev-parse", "HEAD");
 };
+
 for (const mode of [
   "normal",
   "advanced-before",
@@ -54,18 +57,23 @@ for (const mode of [
     git(root, "clone", remote, cwd);
     const content = JSON.stringify({ name: "fixture", version: "1.0.1" });
     fs.writeFileSync(path.join(cwd, "package.json"), content);
+
     const context = {
       cwd,
       env: { GITHUB_SHA: expected, GITHUB_REPOSITORY: "uinaf/skillcheck", GITHUB_TOKEN: "fixture" },
       nextRelease: { version: "1.0.1", gitHead: expected },
     };
+
     if (mode === "wrong-checkout") {
       context.env.GITHUB_SHA = "a".repeat(40);
     }
+
     if (mode === "wrong-release-head") {
       context.nextRelease.gitHead = "a".repeat(40);
     }
+
     let created = "";
+
     if (mode === "advanced-before") {
       fs.writeFileSync(
         path.join(remote, "package.json"),
@@ -73,21 +81,26 @@ for (const mode of [
       );
       commit(remote);
     }
+
     if (mode === "source-edit") {
       fs.writeFileSync(path.join(cwd, "source.txt"), "unverified\n");
     }
+
     if (mode === "manifest-edit") {
       fs.writeFileSync(
         path.join(cwd, "package.json"),
         JSON.stringify({ name: "other", version: "1.0.1" }),
       );
     }
+
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
       assert.equal(url, "https://api.github.com/graphql");
       assert(typeof options?.body === "string");
+
       const {
         variables: { input },
       } = JSON.parse(options.body);
+
       assert.equal(input.expectedHeadOid, expected);
       assert.deepEqual(input.branch, {
         repositoryNameWithOwner: "uinaf/skillcheck",
@@ -96,31 +109,40 @@ for (const mode of [
       assert.deepEqual(input.fileChanges.additions, [
         { path: "package.json", contents: Buffer.from(content).toString("base64") },
       ]);
+
       if (mode === "http-error") {
         return new Response("denied", { status: 403 });
       }
+
       if (mode === "advanced-before") {
         return Response.json({
           data: null,
           errors: [{ message: "expectedHeadOid does not match branch head" }],
         });
       }
+
       if (mode === "wrong-parent") {
         fs.writeFileSync(path.join(remote, "source.txt"), "raced\n");
         commit(remote);
       }
+
       fs.writeFileSync(path.join(remote, "package.json"), content);
+
       if (mode === "returned-source-edit") {
         fs.writeFileSync(path.join(remote, "source.txt"), "unverified\n");
       }
+
       if (mode === "returned-manifest-edit") {
         fs.appendFileSync(path.join(remote, "package.json"), "\n");
       }
+
       created = commit(remote);
+
       if (mode === "advanced-after") {
         fs.writeFileSync(path.join(remote, "source.txt"), "newer source\n");
         commit(remote);
       }
+
       return Response.json({
         data: {
           createCommitOnBranch: {
@@ -129,6 +151,7 @@ for (const mode of [
         },
       });
     });
+
     try {
       if (mode === "normal" || mode === "advanced-after") {
         await prepare({}, context);
@@ -137,6 +160,7 @@ for (const mode of [
         assert.equal(git(cwd, "show", "-s", "--format=%P", "HEAD"), expected);
         assert.equal(fs.readFileSync(path.join(cwd, "source.txt"), "utf8"), "verified source\n");
         assert.equal(fs.readFileSync(path.join(cwd, "package.json"), "utf8"), content);
+
         if (mode === "advanced-after") {
           assert.notEqual(git(remote, "rev-parse", "HEAD"), created);
         }
@@ -150,16 +174,20 @@ for (const mode of [
           mode === "wrong-release-head" ? "a".repeat(40) : expected,
         );
         assert.equal(git(cwd, "rev-parse", "HEAD"), expected);
+
         if (mode === "fetch-failure") {
           assert.equal(git(remote, "rev-parse", "HEAD"), created);
         }
+
         if (mode === "advanced-before") {
           assert.match(fs.readFileSync(path.join(remote, "package.json"), "utf8"), /newDependency/);
         }
+
         if (mode === "source-edit" || mode === "manifest-edit") {
           assert.equal(fetchMock.mock.calls.length, 0);
         }
       }
+
       assert.equal(git(remote, "tag", "--list"), "");
     } finally {
       fetchMock.mockRestore();
@@ -172,6 +200,7 @@ test("release prepares npm before signed writeback, then publishes GitHub", () =
   const config = JSON.parse(
     fs.readFileSync(new URL("../.releaserc.json", import.meta.url), "utf8"),
   );
+
   assert.equal(config.plugins[2], "@semantic-release/npm");
   assert.equal(config.plugins[3], "./scripts/release-commit.ts");
 });

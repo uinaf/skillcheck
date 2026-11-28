@@ -31,6 +31,7 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
       ["install", "--ignore-scripts", "--no-audit", "--no-fund", tarball],
       consumer,
     );
+
     assert.equal(installed.status, 0, installed.stderr);
     assert.equal(fs.existsSync(path.join(consumer, "node_modules", "promptfoo")), false);
 
@@ -39,8 +40,10 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
       ["lint", path.join(root, "test", "fixtures", "clean")],
       consumer,
     );
+
     assert.equal(linted.status, 0, linted.stderr);
     assert.match(linted.stdout, /skill lint: 2 package\(s\) clean/);
+
     // An empty ANTHROPIC_API_KEY is no key: the bare default judge grades
     // through the agent SDK, so the preflight must ask for it too.
     const preflight = run(
@@ -49,11 +52,13 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
       consumer,
       { ...process.env, ANTHROPIC_API_KEY: "" },
     );
+
     assert.equal(preflight.status, 2, preflight.stderr);
     assert.match(
       preflight.stderr,
       /^missing eval package\(s\): promptfoo, @anthropic-ai\/claude-agent-sdk$/m,
     );
+
     // promptfoo loads these by file URL beside cli.js, so a pack that drops
     // one still lints but breaks every eval.
     for (const entry of ["transform.js", "skill-evidence.js"]) {
@@ -62,10 +67,12 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
         `packed dist is missing ${entry}`,
       );
     }
+
     const grokProviderPath = path.join(
       consumer,
       "node_modules/@uinaf/skillcheck/dist/grok-provider.js",
     );
+
     assert.ok(fs.existsSync(grokProviderPath));
     const fake = path.join(temp, "fake-grok");
     fs.writeFileSync(
@@ -73,6 +80,7 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
       `#!${process.execPath}\nprocess.stdout.write(JSON.stringify({type:'text',data:'packaged fixture'})+'\\n'+JSON.stringify({type:'end',stopReason:'end_turn'})+'\\n');\n`,
     );
     fs.chmodSync(fake, 0o755);
+
     const evaluated = run(
       process.execPath,
       [
@@ -82,6 +90,7 @@ test("packed CLI installs without eval peers, lints, and names missing peers", (
       ],
       consumer,
     );
+
     assert.equal(evaluated.status, 0, evaluated.stderr);
     assert.deepEqual(JSON.parse(evaluated.stdout), {
       output: "packaged fixture",

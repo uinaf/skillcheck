@@ -39,6 +39,7 @@ function runCli(args: Array<string>, env?: NodeJS.ProcessEnv) {
     encoding: "utf8",
     env: { ...process.env, ...env },
   });
+
   return { rc: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
 }
 
@@ -60,6 +61,7 @@ function generate(dir: string, opts: Partial<RunOptions>) {
 // components, and the row score averages them.
 function row(checklist: number, skillUsed: boolean, extra: object = {}) {
   const pass = checklist >= 0.7 && skillUsed;
+
   return {
     score: (checklist + (skillUsed ? 1 : 0)) / 2,
     success: pass,
@@ -87,6 +89,7 @@ test("aggregateTrials: pass^k, pass rate, mean, min, spread, skill-used rate", (
     { score: 0.99, pass: true, skillUsed: true },
     { score: 0.9, pass: false, skillUsed: false },
   ]);
+
   assert.deepEqual(s, {
     trials: 3,
     pass: false,
@@ -121,11 +124,13 @@ test("formatStats: one trial keeps the single-score line, k trials show the spre
     formatStats(aggregateTrials([{ score: 0.8, pass: true, skillUsed: true }])),
     "score=0.8000",
   );
+
   const many = Array.from({ length: 20_000 }, (_, i) => ({
     score: 0.5,
     pass: i === 0,
     skillUsed: true,
   }));
+
   assert.match(formatStats(aggregateTrials(many)), /passes=1\/20000 skill-used=20000\/20000/);
   assert.equal(
     formatStats(
@@ -145,6 +150,7 @@ test("classifyResult: each row is a trial scored on its weighted checklist", () 
       stats: { successes: 1, failures: 1, errors: 0 },
     },
   });
+
   assert.deepEqual(verdict, {
     trials: [
       { score: 0.85, pass: true, skillUsed: true },
@@ -163,6 +169,7 @@ test("classifyResult: one errored trial errors the scenario and names the trial"
       stats: { successes: 1, failures: 0, errors: 1 },
     },
   });
+
   assert.deepEqual(verdict, { error: "trial 2: rate limited (429)" });
 });
 
@@ -175,6 +182,7 @@ test("classifyResult: missing trials or assertion components are errors, not gra
 
 test("reduceResults: a k-trial result becomes one aggregated scorecard row", () => {
   const dir = tmp("reduce-trials");
+
   try {
     fs.writeFileSync(
       path.join(dir, "demo--basic.json"),
@@ -227,6 +235,7 @@ test("reduceResults: a k-trial result becomes one aggregated scorecard row", () 
 
 test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios", () => {
   const base = aggregateTrials([{ score: 0.9, pass: true, skillUsed: true }]);
+
   const e = (skill: string, scenario: string, over: Partial<ScorecardEntry>): ScorecardEntry => ({
     skill,
     scenario,
@@ -243,6 +252,7 @@ test("summarizeSkills: per-skill pass^k, pass rate, mean score, noisy scenarios"
     tokens: 0,
     ...over,
   });
+
   assert.deepEqual(
     summarizeSkills([
       e("a", "one", { pass: true, pass_rate: 1, score: 0.9 }),
@@ -286,6 +296,7 @@ test("runOptions: --trials defaults to 1, --agent-effort is claude-only and vali
   assert.equal(opts(["--agent-effort", "medium"]).agentEffort, "medium");
   assert.equal(opts([]).agentEffort, undefined);
   assert.throws(() => opts(["--agent-effort", "extreme"]), /--agent-effort must be low, medium/);
+
   for (const harness of ["codex", "grok"]) {
     assert.throws(
       () => opts(["--harness", harness, "--agent-effort", "low"]),
@@ -296,6 +307,7 @@ test("runOptions: --trials defaults to 1, --agent-effort is claude-only and vali
 
 test("cli: an unsupported --agent-effort fails before an eval starts", () => {
   const root = tmp("effort-harness");
+
   try {
     const r = runCli(["sweep", "--root", root, "--harness", "codex", "--agent-effort", "low"]);
     assert.equal(r.rc, 1);
@@ -308,13 +320,17 @@ test("cli: an unsupported --agent-effort fails before an eval starts", () => {
 
 test("generateRun: k trials get k isolated workdirs, each bound to one provider", () => {
   const dir = tmp("trials-config");
+
   try {
     const { configPath } = generate(dir, { trials: 3, agentEffort: "medium" });
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+
     const workdirs = config.providers.map(
       (p: { config: { working_dir: string } }) => p.config.working_dir,
     );
+
     assert.equal(new Set(workdirs).size, 3);
+
     for (const [i, t] of config.tests.entries()) {
       const label = `trial-${i + 1}`;
       assert.equal(config.providers[i].label, label);
@@ -324,6 +340,7 @@ test("generateRun: k trials get k isolated workdirs, each bound to one provider"
       assert.ok(fs.existsSync(path.join(workdirs[i], "note.md")));
       assert.ok(fs.existsSync(t.vars.manifest));
     }
+
     const plain = JSON.parse(fs.readFileSync(generate(dir, {}).configPath, "utf8"));
     assert.equal(plain.providers.length, 1);
     assert.equal("effort" in plain.providers[0].config, false);
@@ -347,9 +364,11 @@ process.exit(1);
   );
   const { configPath } = generate(dir, opts);
   const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+
   for (const p of config.providers) {
     p.config.path_to_claude_code_executable = stub;
   }
+
   fs.writeFileSync(configPath, JSON.stringify(config));
   const promptfoo = resolvePackageDir("promptfoo");
   assert.ok(promptfoo);
@@ -376,11 +395,13 @@ process.exit(1);
       },
     },
   );
+
   const calls = fs
     .readFileSync(log, "utf8")
     .trim()
     .split("\n")
     .map((l) => JSON.parse(l) as { argv: Array<string>; cwd: string });
+
   return { calls, config, result: JSON.parse(fs.readFileSync(out, "utf8")) };
 }
 
@@ -391,15 +412,19 @@ test(
   () => {
     const dir = tmp("effort-spawn");
     const plainDir = tmp("effort-default");
+
     try {
       const { calls, config, result } = spawnedAgents(dir, { trials: 2, agentEffort: "low" });
       assert.equal(calls.length, 2);
+
       for (const { argv } of calls) {
         const effort =
           argv.find((arg) => arg.startsWith("--effort="))?.slice("--effort=".length) ??
           (argv.includes("--effort") ? argv[argv.indexOf("--effort") + 1] : undefined);
+
         assert.equal(effort, "low");
       }
+
       assert.deepEqual(
         calls.map((c) => fs.realpathSync(c.cwd)).sort(),
         config.providers.map((p: { config: { working_dir: string } }) =>
@@ -449,6 +474,7 @@ function gitRoot(): string {
     ],
     { cwd: root },
   );
+
   return root;
 }
 
@@ -483,11 +509,14 @@ function writeGraded(
 
 test("summarize: refuses to merge runs with different agent effort or trials", () => {
   const root = gitRoot();
+
   try {
     const evals = path.join(root, "skills", "demo", "evals");
+
     for (const name of ["one", "two", "three"]) {
       fs.cpSync(path.join(evals, "basic"), path.join(evals, name), { recursive: true });
     }
+
     const { results, scorecards } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
     writeGraded(results, "demo--one", { agent_effort: "medium", trials: 3 });
@@ -518,6 +547,7 @@ test("summarize: refuses to merge runs with different agent effort or trials", (
 
 test("sweep: skips a result from the same configuration and reruns a changed one", () => {
   const root = gitRoot();
+
   try {
     const { results } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
@@ -540,10 +570,12 @@ cp.spawnSync = (command, args, options) => spawn(command, [${JSON.stringify(fake
 syncBuiltinESMExports();
 `,
     );
+
     const sweep = (...args: Array<string>) =>
       spawnSync(process.execPath, ["--import", preload, cli, "sweep", "--root", root, ...args], {
         encoding: "utf8",
       });
+
     const same = sweep();
     assert.equal(same.status, 0, same.stderr);
     assert.match(same.stdout, /SKIP  demo--basic/);
@@ -572,10 +604,12 @@ syncBuiltinESMExports();
 test("generateRun: a Claude judge carries its effort on both Anthropic paths", () => {
   const dir = tmp("judge-effort");
   const saved = process.env.ANTHROPIC_API_KEY;
+
   try {
     const judgeOf = (opts: Partial<RunOptions>) =>
       JSON.parse(fs.readFileSync(generate(dir, opts).configPath, "utf8")).defaultTest.options
         .provider;
+
     delete process.env.ANTHROPIC_API_KEY;
     const sdk = judgeOf({ judgeModel: "claude-opus-5-5", judgeEffort: "high" });
     assert.equal(sdk.id, "anthropic:claude-agent-sdk");
@@ -595,12 +629,14 @@ test("generateRun: a Claude judge carries its effort on both Anthropic paths", (
     } else {
       process.env.ANTHROPIC_API_KEY = saved;
     }
+
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("reduceResults: a Claude judge's effort is recovered from the result config", () => {
   const dir = tmp("judge-effort-reduce");
+
   try {
     fs.writeFileSync(
       path.join(dir, "demo--basic.json"),
@@ -626,6 +662,7 @@ test("reduceResults: a Claude judge's effort is recovered from the result config
       id: "anthropic:messages:claude-opus-5-5",
       config: { reasoning_effort: "high" },
     };
+
     const raw = JSON.parse(fs.readFileSync(path.join(dir, "demo--basic.json"), "utf8"));
     raw.config.defaultTest.options.provider = qualified;
     fs.writeFileSync(path.join(dir, "demo--basic.json"), JSON.stringify(raw));
@@ -639,14 +676,17 @@ test("reduceResults: a Claude judge's effort is recovered from the result config
 test("skill evidence: a skill call or a read of the installed SKILL.md", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
   const dir = tmp("evidence");
+
   try {
     const workdir = path.join(dir, "workdir");
     fs.mkdirSync(path.join(workdir, ".claude", "skills", "demo"), { recursive: true });
     fs.writeFileSync(path.join(workdir, ".claude", "skills", "demo", "SKILL.md"), "x");
     fs.mkdirSync(path.join(dir, "source", "demo"), { recursive: true });
     fs.writeFileSync(path.join(dir, "source", "demo", "SKILL.md"), "x");
+
     const check = (metadata: object, required = true) =>
       assertSkillUsed("", { vars: { workdir }, config: { skill: "demo", required }, metadata });
+
     const read = (file_path: string, is_error: boolean | undefined = false, output = "---") => ({
       toolCalls: [{ name: "Read", input: { file_path }, is_error, output }],
     });
@@ -672,12 +712,14 @@ test("skill evidence: a skill call or a read of the installed SKILL.md", async (
     fs.mkdirSync(path.join(linked, ".claude", "skills", "demo"), { recursive: true });
     const source = path.join(dir, "source", "demo", "SKILL.md");
     fs.symlinkSync(source, path.join(linked, ".claude", "skills", "demo", "SKILL.md"));
+
     const viaLink = (file_path: string) =>
       assertSkillUsed("", {
         vars: { workdir: linked },
         config: { skill: "demo", required: true },
         metadata: read(file_path),
       }).pass;
+
     assert.equal(viaLink(source), false);
     assert.equal(viaLink(".claude/skills/demo/SKILL.md"), true);
     assert.equal(
@@ -711,6 +753,7 @@ test("classifyResult: optional skill use passes but still reports the skill as u
       ],
     },
   };
+
   assert.deepEqual(classifyResult({ results: { results: [optional] } }), {
     trials: [{ score: 0.9, pass: true, skillUsed: false }],
   });
@@ -718,6 +761,7 @@ test("classifyResult: optional skill use passes but still reports the skill as u
 
 test("generateRun: skill_use optional is carried to the assertion and validated", () => {
   const dir = tmp("skill-use");
+
   try {
     const skillDir = path.join(dir, "skills", "demo");
     fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
@@ -725,12 +769,14 @@ test("generateRun: skill_use optional is carried to the assertion and validated"
     });
     const criteriaPath = path.join(skillDir, "evals", "basic", "criteria.json");
     const criteria = JSON.parse(fs.readFileSync(criteriaPath, "utf8"));
+
     const paths = {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
       grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
       skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     };
+
     const opts = { harness: "claude" as const, judgeModel: "claude-opus-5" };
     fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, skill_use: "optional" }));
     const { configPath } = generateRun(path.join(skillDir, "evals", "basic"), opts, paths);
@@ -750,6 +796,7 @@ test("generateRun: skill_use optional is carried to the assertion and validated"
 test("ensurePrivateDir: owner-only, refuses a symlink, tightens an open directory", async () => {
   const { ensurePrivateDir } = await import("../src/cli.ts");
   const dir = tmp("private");
+
   try {
     const fresh = path.join(dir, "fresh");
     ensurePrivateDir(fresh);
@@ -773,16 +820,19 @@ test("ensurePrivateDir: owner-only, refuses a symlink, tightens an open director
 
 test("skill evidence: metadata is also read from providerResponse", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
+
   const result = assertSkillUsed("", {
     vars: { workdir: "/nonexistent" },
     config: { skill: "demo", required: true },
     providerResponse: { metadata: { skillCalls: [{ name: "demo" }] } },
   });
+
   assert.equal(result.pass, true);
 });
 
 test("control: installs no skill, drops the hidden invocation, never requires skill use", () => {
   const dir = tmp("control");
+
   try {
     const skillDir = path.join(dir, "skills", "demo");
     fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
@@ -794,12 +844,14 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
       fs.readFileSync(md, "utf8").replace(/^---\n/, "---\ndisable-model-invocation: true\n"),
     );
     const scenarioDir = path.join(skillDir, "evals", "basic");
+
     const paths = {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
       grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
       skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     };
+
     const base = { harness: "claude" as const, judgeModel: "claude-opus-5" };
     const withSkill = generateRun(scenarioDir, base, paths);
     const control = generateRun(scenarioDir, { ...base, control: true }, paths);
@@ -818,6 +870,7 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
     assert.equal("skills" in controlConfig.providers[0].config, false);
     assert.equal(skillConfig.tests[0].assert[1].config.required, true);
     assert.equal(controlConfig.tests[0].assert[1].config.required, false);
+
     for (const tool of ["Bash", "WebFetch", "WebSearch"]) {
       assert.ok(controlConfig.providers[0].config.append_allowed_tools.includes(tool));
     }
@@ -826,6 +879,7 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
       const c = generateRun(scenarioDir, { ...base, harness, control: true }, paths);
       assert.equal(c.name, `demo--basic--${harness}--control`);
       const wd = read(c.configPath).providers[0].config.working_dir;
+
       for (const root of [".claude", ".agents", ".grok"]) {
         assert.equal(fs.existsSync(path.join(wd, root)), false, `${harness} ${root}`);
       }
@@ -837,6 +891,7 @@ test("control: installs no skill, drops the hidden invocation, never requires sk
 
 test("control: rows pair with their skill rows into lift and no-lift scenarios", () => {
   const dir = tmp("control-reduce");
+
   try {
     const write = (name: string, scenario: string, variant: string, score: number) => {
       fs.writeFileSync(
@@ -854,6 +909,7 @@ test("control: rows pair with their skill rows into lift and no-lift scenarios",
         }),
       );
     };
+
     write("demo--a", "a", "skill", 0.9);
     write("demo--a--control", "a", "control", 0.4);
     write("demo--b", "b", "skill", 0.95);
@@ -882,6 +938,7 @@ test("control: rows pair with their skill rows into lift and no-lift scenarios",
 
 test("control: an unattested control result keeps its variant and harness", () => {
   const dir = tmp("control-legacy");
+
   try {
     for (const name of ["demo--basic--codex--control", "demo--basic--control", "demo--control"]) {
       fs.writeFileSync(
@@ -889,12 +946,14 @@ test("control: an unattested control result keeps its variant and harness", () =
         JSON.stringify({ results: { results: [{ ...row(0.8, true), success: true }] } }),
       );
     }
+
     const rows = reduceResults(dir, false).entries.map((e) => [
       e.skill,
       e.scenario,
       e.harness,
       e.variant,
     ]);
+
     assert.deepEqual(rows, [
       ["demo", "basic", "codex", "control"],
       ["demo", "basic", "claude", "control"],
@@ -909,6 +968,7 @@ test("codex: each run gets a home with the login and none of the operator's skil
   const { privateCodexHome } = await import("../src/scenario.ts");
   const dir = tmp("codex-home");
   const saved = process.env.CODEX_HOME;
+
   try {
     const source = path.join(dir, "operator");
     fs.mkdirSync(path.join(source, "skills", "demo"), { recursive: true });
@@ -925,12 +985,14 @@ test("codex: each run gets a home with the login and none of the operator's skil
     } else {
       process.env.CODEX_HOME = saved;
     }
+
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("summarize: drops carried and fresh rows for scenarios no longer in the tree", () => {
   const root = gitRoot();
+
   try {
     const { results, scorecards } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
@@ -969,6 +1031,7 @@ test("summarize: drops carried and fresh rows for scenarios no longer in the tre
 
 test("summarize: a retired scenario's stale revision or failed attempt does not block cleanup", () => {
   const root = gitRoot();
+
   try {
     const { results, scorecards } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
@@ -998,6 +1061,7 @@ test("summarize: a retired scenario's stale revision or failed attempt does not 
 
 test("summarize: deleting the last scenario drops its rows too", () => {
   const root = gitRoot();
+
   try {
     const { results } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
@@ -1014,6 +1078,7 @@ test("summarize: deleting the last scenario drops its rows too", () => {
 
 test("summarize: an unrelated cli/ directory does not make a results-only root live", () => {
   const root = tmp("results-only-cli");
+
   try {
     const { results } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
@@ -1029,6 +1094,7 @@ test("summarize: an unrelated cli/ directory does not make a results-only root l
 
 test("summarize: a retired row counts once, and a stray JSON file still warns", () => {
   const root = gitRoot();
+
   try {
     const { results, scorecards } = stateDirs(root);
     fs.mkdirSync(results, { recursive: true });
@@ -1055,12 +1121,15 @@ test("summarize: a retired row counts once, and a stray JSON file still warns", 
 
 test("materialize: linked sibling skills are installed transitively, without evals", () => {
   const dir = tmp("siblings");
+
   try {
     const skills = path.join(dir, "skills");
+
     const write = (rel: string, text: string) => {
       fs.mkdirSync(path.dirname(path.join(skills, rel)), { recursive: true });
       fs.writeFileSync(path.join(skills, rel), text);
     };
+
     fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), path.join(skills, "demo"), {
       recursive: true,
     });
@@ -1087,19 +1156,24 @@ test("materialize: linked sibling skills are installed transitively, without eva
     );
     fs.symlinkSync(path.join(dir, "elsewhere"), path.join(skills, "out"));
     write("unlinked/SKILL.md", "---\nname: unlinked\ndescription: u\n---\n");
+
     const paths = {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
       grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
       skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     };
+
     const scenarioDir = path.join(skills, "demo", "evals", "basic");
     const base = { harness: "codex" as const, judgeModel: "claude-opus-5" };
+
     const wd = (control: boolean) =>
       JSON.parse(
         fs.readFileSync(generateRun(scenarioDir, { ...base, control }, paths).configPath, "utf8"),
       ).providers[0].config.working_dir;
+
     const workdir = wd(false);
+
     for (const root of [".claude", ".agents"]) {
       assert.deepEqual(fs.readdirSync(path.join(workdir, root, "skills")).sort(), [
         "b",
@@ -1111,6 +1185,7 @@ test("materialize: linked sibling skills are installed transitively, without eva
       assert.equal(fs.existsSync(path.join(workdir, root, "skills", "b", "evals")), false);
       assert.ok(fs.existsSync(path.join(workdir, root, "skills", "b", "references", "x.md")));
     }
+
     assert.equal(fs.existsSync(path.join(wd(true), ".agents")), false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1120,6 +1195,7 @@ test("materialize: linked sibling skills are installed transitively, without eva
 test("codex: the run's HOME hides the operator's user-level skills and keeps the rest", () => {
   const dir = tmp("home");
   const saved = process.env.HOME;
+
   try {
     const operator = path.join(dir, "operator");
     fs.mkdirSync(path.join(operator, ".agents", "skills", "demo"), { recursive: true });
@@ -1132,9 +1208,11 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
     fs.mkdirSync(path.join(operator, ".config", "gateway"), { recursive: true });
     fs.writeFileSync(path.join(operator, ".config", "gateway", "auth.json"), "{}");
     process.env.HOME = operator;
+
     const config = JSON.parse(
       fs.readFileSync(generate(dir, { harness: "codex", control: true }).configPath, "utf8"),
     );
+
     assert.deepEqual(config.providers[0].config.cli_config, { features: { plugins: false } });
     const home = config.providers[0].config.cli_env.HOME;
     assert.deepEqual(fs.readdirSync(home), [".config"]);
@@ -1146,6 +1224,7 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
     } else {
       process.env.HOME = saved;
     }
+
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -1153,10 +1232,12 @@ test("codex: the run's HOME hides the operator's user-level skills and keeps the
 test("isolated image: the env marker alone on a host claims nothing", () => {
   const dir = tmp("isolated");
   const saved = process.env.SKILLCHECK_ISOLATED;
+
   try {
     const provider = () =>
       JSON.parse(fs.readFileSync(generate(dir, { harness: "codex" }).configPath, "utf8"))
         .providers[0].config;
+
     delete process.env.SKILLCHECK_ISOLATED;
     assert.equal(runConfigOf({ harness: "codex", judgeModel: "j" }).isolated, false);
     assert.equal(provider().sandbox_mode, "workspace-write");
@@ -1170,16 +1251,19 @@ test("isolated image: the env marker alone on a host claims nothing", () => {
     } else {
       process.env.SKILLCHECK_ISOLATED = saved;
     }
+
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("generateRun: the config and manifests that carry criteria are owner-only", () => {
   const dir = tmp("modes");
+
   try {
     const { configPath } = generate(dir, { trials: 2 });
     const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
     assert.equal(fs.statSync(configPath).mode & 0o777, 0o600);
+
     for (const t of config.tests) {
       assert.equal(fs.statSync(t.vars.manifest).mode & 0o777, 0o600);
     }
@@ -1191,12 +1275,16 @@ test("generateRun: the config and manifests that carry criteria are owner-only",
 test("skill evidence: shell output carrying the installed SKILL.md's opening", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
   const dir = tmp("shell-evidence");
+
   try {
     const workdir = path.join(dir, "workdir");
+
     const md =
       "---\nname: demo\ndescription: Prepare an independent review contract.\n---\nbody text";
+
     fs.mkdirSync(path.join(workdir, ".claude", "skills", "demo"), { recursive: true });
     fs.writeFileSync(path.join(workdir, ".claude", "skills", "demo", "SKILL.md"), md);
+
     const check = (output: string, is_error = false) =>
       assertSkillUsed("", {
         vars: { workdir },
@@ -1212,6 +1300,7 @@ test("skill evidence: shell output carrying the installed SKILL.md's opening", a
           ],
         },
       });
+
     assert.equal(check(`== .claude/skills/demo/SKILL.md\n${md}\n`).pass, true);
     assert.equal(check(md, true).pass, false, "a failed command is no evidence");
     assert.equal(check("---\nname: demo\n---").pass, false, "a name alone is no evidence");
@@ -1223,12 +1312,15 @@ test("skill evidence: shell output carrying the installed SKILL.md's opening", a
 test("install: alternatives sit beside the skill, and forbidden use fails when it loads", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
   const dir = tmp("install");
+
   try {
     const skills = path.join(dir, "skills");
+
     const write = (rel: string, text: string) => {
       fs.mkdirSync(path.dirname(path.join(skills, rel)), { recursive: true });
       fs.writeFileSync(path.join(skills, rel), text);
     };
+
     fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), path.join(skills, "demo"), {
       recursive: true,
     });
@@ -1240,17 +1332,21 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
     fs.symlinkSync(path.join(skills, "demo"), path.join(skills, "alias"));
     fs.mkdirSync(path.join(skills, "mdlink"));
     fs.symlinkSync(path.join(skills, "x", "SKILL.md"), path.join(skills, "mdlink", "SKILL.md"));
+
     const paths = {
       scratchDir: path.join(dir, "scratch"),
       transformPath: path.join(here, "..", "src", "transform.ts"),
       grokProviderPath: path.join(here, "..", "src", "grok-provider.ts"),
       skillEvidencePath: path.join(here, "..", "src", "skill-evidence.ts"),
     };
+
     const scenarioDir = path.join(skills, "demo", "evals", "basic");
     const criteriaPath = path.join(scenarioDir, "criteria.json");
     const criteria = JSON.parse(fs.readFileSync(criteriaPath, "utf8"));
+
     const run = (extra: object, opts: Partial<RunOptions> = {}) => {
       fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, ...extra }));
+
       const config = JSON.parse(
         fs.readFileSync(
           generateRun(
@@ -1261,7 +1357,9 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
           "utf8",
         ),
       );
+
       const workdir = config.providers[0].config.working_dir;
+
       return {
         config,
         installed: fs.existsSync(path.join(workdir, ".claude"))
@@ -1301,6 +1399,7 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
       undefined,
     );
     const codex = run({ install: ["near"] }, { harness: "codex" }).config.providers[0].config;
+
     for (const root of [".claude", ".agents"]) {
       assert.deepEqual(fs.readdirSync(path.join(codex.working_dir, root, "skills")).sort(), [
         "demo",
@@ -1308,21 +1407,25 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
         "x",
       ]);
     }
+
     assert.throws(
       () => run({ install: ["near"], skill_use: "forbidden" }, { harness: "grok" }),
       /grok cannot evidence/,
     );
+
     for (const bad of [["hidden"], ["demo"], ["alias"], ["mdlink"], ["missing"], ["../near"], []]) {
       assert.throws(() => run({ install: bad }), /install/, JSON.stringify(bad));
     }
 
     const workdir = listed.config.providers[0].config.working_dir;
+
     const check = (metadata: object) =>
       assertSkillUsed("", {
         vars: { workdir },
         config: { skill: "demo", required: false, forbidden: true },
         metadata,
       });
+
     assert.deepEqual(check({ skillCalls: [{ name: "near" }] }), {
       pass: true,
       score: 0,
@@ -1340,6 +1443,7 @@ test("install: alternatives sit beside the skill, and forbidden use fails when i
 
 test("install: a hidden skill under test has no routing to test", () => {
   const dir = tmp("hidden-forbidden");
+
   try {
     const skillDir = path.join(dir, "skills", "demo");
     fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
@@ -1352,6 +1456,7 @@ test("install: a hidden skill under test has no routing to test", () => {
     );
     const criteriaPath = path.join(skillDir, "evals", "basic", "criteria.json");
     const criteria = JSON.parse(fs.readFileSync(criteriaPath, "utf8"));
+
     for (const extra of [{ skill_use: "forbidden" }, { install: "all" }]) {
       fs.writeFileSync(criteriaPath, JSON.stringify({ ...criteria, ...extra }));
       assert.throws(
@@ -1376,6 +1481,7 @@ test("install: a hidden skill under test has no routing to test", () => {
 
 test("linkedSiblings: a link to an alias of the skill itself is not a sibling", () => {
   const dir = tmp("self-alias");
+
   try {
     const skills = path.join(dir, "skills");
     fs.mkdirSync(path.join(skills, "demo"), { recursive: true });
@@ -1390,12 +1496,16 @@ test("linkedSiblings: a link to an alias of the skill itself is not a sibling", 
 test("skill evidence: a Codex command that printed SKILL.md counts even when it exits nonzero", async () => {
   const { default: assertSkillUsed } = await import("../src/skill-evidence.ts");
   const dir = tmp("codex-evidence");
+
   try {
     const workdir = path.join(dir, "workdir");
+
     const md =
       "---\nname: demo\ndescription: Prepare an independent review contract.\n---\nbody text";
+
     fs.mkdirSync(path.join(workdir, ".agents", "skills", "demo"), { recursive: true });
     fs.writeFileSync(path.join(workdir, ".agents", "skills", "demo", "SKILL.md"), md);
+
     const check = (output: string, raw?: unknown) =>
       assertSkillUsed("", {
         vars: { workdir },
@@ -1416,6 +1526,7 @@ test("skill evidence: a Codex command that printed SKILL.md counts even when it 
             }),
         },
       });
+
     assert.equal(check(`${md}\n`).pass, true);
     assert.equal(check("cat: .agents/skills/demo/SKILL.md: No such file").pass, false);
     assert.equal(check(md, "not json").pass, false, "unparseable raw is no evidence");
@@ -1450,6 +1561,7 @@ test("classifyResult: a failed judge call errors the trial instead of scoring it
       ],
     },
   });
+
   assert.deepEqual(classifyResult({ results: { results: [row(true)] } }), {
     error:
       "judge call failed: Error calling Claude Agent SDK: Native CLI binary for linux-arm64 not found.",
@@ -1463,6 +1575,7 @@ for (const harness of ["claude", "codex", "grok"] as const) {
   for (const target of ["eval-file", "eval-directory", "skill-file"] as const) {
     test(`materialize: ${harness} refuses a symlink to ${target}`, () => {
       const dir = tmp("skill-symlink");
+
       try {
         const skillDir = path.join(dir, "skills", "demo");
         fs.cpSync(path.join(here, "fixtures", "clean", "skills", "demo"), skillDir, {
@@ -1471,6 +1584,7 @@ for (const harness of ["claude", "codex", "grok"] as const) {
         const skillFile = path.join(skillDir, "SKILL.md");
         const original = fs.readFileSync(skillFile, "utf8");
         let link: string;
+
         if (target === "skill-file") {
           const source = path.join(dir, "source.md");
           fs.writeFileSync(
@@ -1484,6 +1598,7 @@ for (const harness of ["claude", "codex", "grok"] as const) {
           link = path.join(skillDir, "reference");
           fs.symlinkSync(target === "eval-file" ? "evals/basic/criteria.json" : "evals", link);
         }
+
         const before = fs.readFileSync(skillFile, "utf8");
         const scenario = loadScenario(path.join(skillDir, "evals", "basic"));
         assert.throws(() => materialize(scenario, path.join(dir, "trial"), harness), {

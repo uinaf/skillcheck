@@ -7,6 +7,7 @@ import transform from "../src/transform.ts";
 
 test("graded output excludes installed dependencies but includes deliverables", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-transform-"));
+
   try {
     const workdir = path.join(dir, "workdir");
     fs.mkdirSync(path.join(workdir, "node_modules", "package"), { recursive: true });
@@ -26,12 +27,15 @@ test("graded output excludes installed dependencies but includes deliverables", 
 
 test("graded output skips tool caches the agent's commands create", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "skillcheck-transform-"));
+
   try {
     const workdir = path.join(dir, "workdir");
+
     for (const cache of [".cache/npm/_cacache", ".npm/_logs", ".pnpm-store/v10"]) {
       fs.mkdirSync(path.join(workdir, cache), { recursive: true });
       fs.writeFileSync(path.join(workdir, cache, "entry"), "CACHE-BLOB".repeat(10_000));
     }
+
     fs.writeFileSync(path.join(workdir, "eslint.config.js"), "export default [];");
     const manifest = path.join(dir, "manifest.json");
     fs.writeFileSync(manifest, "{}");
