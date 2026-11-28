@@ -96,8 +96,8 @@ function lintSkill(dir: string, root: string, errors: Array<string>): void {
   const body = lines
     .slice(close + 1)
     .join("\n")
-    .replace(/^```[\s\S]*?^```/gm, "")
-    .replace(/`[^`\n]*`/g, "");
+    .replaceAll(/^```[\s\S]*?^```/gm, "")
+    .replaceAll(/`[^`\n]*`/g, "");
 
   for (const link of body.matchAll(/\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+"[^"\n]*")?\s*\)/g)) {
     const target = link[1].replace(/^<(.*)>$/, "$1");
@@ -188,7 +188,7 @@ function lintEvals(skills: Array<string>, root: string, errors: Array<string>): 
       const text = fs.readFileSync(file, "utf8").replace(FILE_BLOCK, "");
 
       for (const name of names) {
-        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const escaped = name.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
         if (new RegExp(`(?<![\\w-])${escaped}(?![\\w-])`, "i").test(text)) {
           errors.push(`${path.relative(root, file)}: task names skill ${name}`);

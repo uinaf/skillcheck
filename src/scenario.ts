@@ -97,7 +97,7 @@ export function loadScenario(scenarioDir: string): Scenario {
 
   const files: Scenario["files"] = [];
 
-  const task = taskMd.replace(FILE_BLOCK, (_, name: string, content: string) => {
+  const task = taskMd.replaceAll(FILE_BLOCK, (_, name: string, content: string) => {
     files.push({ name: name.trim(), content: content + "\n" });
 
     return `(Input file \`${name.trim()}\` is available in your working directory.)`;
