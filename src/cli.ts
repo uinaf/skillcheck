@@ -158,7 +158,7 @@ export function runOptions(flags: Map<string, string | true>): RunOptions {
   }
 
   return {
-    harness: harness as Harness,
+    harness,
     // claude defaults in scenario.ts; codex/grok undefined = that CLI's default
     agentModel: agent,
     agentEffort,

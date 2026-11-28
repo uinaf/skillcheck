@@ -129,7 +129,6 @@ export default defineConfig({
       "typescript/no-unsafe-return": "off",
       "typescript/no-unsafe-member-access": "off",
       "typescript/no-unsafe-type-assertion": "off",
-      "typescript/no-unnecessary-type-assertion": "off",
       "typescript/no-unsafe-assignment": "off",
       "typescript/no-unsafe-call": "off",
     },
